@@ -73,9 +73,7 @@
 
 | الملف | النوع | الوصف | رابط التحميل |
 | :--- | :--- | :--- | :--- |
-| **`CameraVault_v1.0_Signed.apk`** | Release APK | النسخة الرسمية الموقعة والنهائية مع كامل معايير الأمان وتشفير الشاشة. | [📥 تحميل مباشر](https://github.com/dev-huthaifa/CameraVault/releases/latest/download/CameraVault_v1.0_Signed.apk) |
-| **`CameraVault_Screenshots_Edition.apk`** | Showcase APK | نسخة بدون قيود أمان لقطات الشاشة لتصوير الواجهات ومشاركتها في المتاجر. | [📥 تحميل مباشر](https://github.com/dev-huthaifa/CameraVault/releases/latest/download/CameraVault_Screenshots_Edition.apk) |
-| **`CameraVault_v1.0_Signed.aab`** | App Bundle | الحزمة الرسمية الجاهزة للرفع على Google Play Console. | [📥 تحميل الحزمة](https://github.com/dev-huthaifa/CameraVault/releases/latest/download/CameraVault_v1.0_Signed.aab) |
+| **`CameraVault_v1.0_Signed.apk`** | Release APK | النسخة الرسمية الموقعة والنهائية مع كامل معايير الأمان وتشفير الشاشة. | [📥 تحميل مباشر (Direct Download)](https://github.com/dev-huthaifa/CameraVault/releases/latest/download/CameraVault_v1.0_Signed.apk) |
 
 ---
 
