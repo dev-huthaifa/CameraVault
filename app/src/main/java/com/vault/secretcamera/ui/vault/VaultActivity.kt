@@ -1,6 +1,7 @@
 package com.vault.secretcamera.ui.vault
 
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -39,11 +40,13 @@ class VaultActivity : AppCompatActivity() {
     private lateinit var adapter: VaultAdapter
 
     private var currentCategory = VaultCategory.ALL
+    private var isPickingMedia = false
 
     // Pick Photos from Gallery
     private val pickPhotosLauncher = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
+        isPickingMedia = false
         if (uris.isNotEmpty()) {
             importUris(uris)
         }
@@ -53,6 +56,7 @@ class VaultActivity : AppCompatActivity() {
     private val pickVideosLauncher = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
+        isPickingMedia = false
         if (uris.isNotEmpty()) {
             importUris(uris)
         }
@@ -62,6 +66,7 @@ class VaultActivity : AppCompatActivity() {
     private val pickFilesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
+        isPickingMedia = false
         if (uris.isNotEmpty()) {
             importUris(uris)
         }
@@ -100,40 +105,46 @@ class VaultActivity : AppCompatActivity() {
     private fun setupAds() {
         AdManager.loadBanner(this, binding.adBannerContainer)
         AdManager.loadInterstitial(this)
-        // Automatic Interstitial on vault open!
-        AdManager.autoShow(this, delayMs = 1000L, force = true)
+        AdManager.autoShow(this, delayMs = 1000L, force = false)
     }
 
     override fun onResume() {
         super.onResume()
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+            return
+        }
+        isPickingMedia = false
         loadItems()
-        SecureShareHelper.cleanShareCache(this)
         AdManager.loadBanner(this, binding.adBannerContainer)
         AdManager.loadInterstitial(this)
-        // Auto show ad when returning to vault
         AdManager.autoShow(this, delayMs = 800L, force = false)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        SecureShareHelper.cleanShareCache(this)
+    override fun onStop() {
+        super.onStop()
+        // Auto-lock and exit to Camera if user backgrounds the app
+        if (!isPickingMedia && !isChangingConfigurations) {
+            securityPrefs.lockVault()
+            finish()
+        }
     }
 
     private fun setupToolbar() {
-        binding.tvDecoyBadge.visibility = View.GONE
-
         binding.btnLockVault.setOnClickListener {
-            AdManager.showInterstitial(this, force = true) {
-                securityPrefs.lockVault()
-                finish()
-            }
+            securityPrefs.lockVault()
+            finish()
         }
 
+        // Settings Button
         binding.btnVaultSettings.setOnClickListener {
+            isPickingMedia = true
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
+        // Intruder Logs
         binding.btnIntruders.setOnClickListener {
+            isPickingMedia = true
             startActivity(Intent(this, IntruderLogActivity::class.java))
         }
     }
@@ -155,7 +166,6 @@ class VaultActivity : AppCompatActivity() {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 currentCategory = categories.getOrNull(tab?.position ?: 0)?.first ?: VaultCategory.ALL
                 loadItems()
-                // Automatic ad on tab switch!
                 AdManager.showInterstitial(this@VaultActivity, force = false)
             }
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
@@ -167,6 +177,7 @@ class VaultActivity : AppCompatActivity() {
         adapter = VaultAdapter(
             repository = repository,
             onItemClick = { item ->
+                isPickingMedia = true
                 val intent = Intent(this, MediaViewerActivity::class.java).apply {
                     putExtra(MediaViewerActivity.EXTRA_ITEM_ID, item.id)
                 }
@@ -204,6 +215,7 @@ class VaultActivity : AppCompatActivity() {
         binding.btnBatchShare.setOnClickListener {
             val selected = adapter.getSelectedItems()
             if (selected.isEmpty()) return@setOnClickListener
+            isPickingMedia = true
             SecureShareHelper.showShareDialog(this, repository, selected)
         }
 
@@ -247,8 +259,10 @@ class VaultActivity : AppCompatActivity() {
         dialogBinding.optImportPhotos.setOnClickListener {
             dialog.dismiss()
             try {
+                isPickingMedia = true
                 pickPhotosLauncher.launch("image/*")
             } catch (e: Exception) {
+                isPickingMedia = false
                 Toast.makeText(this, "تعذر فتح معرض الصور: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -257,8 +271,10 @@ class VaultActivity : AppCompatActivity() {
         dialogBinding.optImportVideos.setOnClickListener {
             dialog.dismiss()
             try {
+                isPickingMedia = true
                 pickVideosLauncher.launch("video/*")
             } catch (e: Exception) {
+                isPickingMedia = false
                 Toast.makeText(this, "تعذر فتح استديو الفيديو: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -267,8 +283,10 @@ class VaultActivity : AppCompatActivity() {
         dialogBinding.optImportFiles.setOnClickListener {
             dialog.dismiss()
             try {
+                isPickingMedia = true
                 pickFilesLauncher.launch(arrayOf("*/*"))
             } catch (e: Exception) {
+                isPickingMedia = false
                 Toast.makeText(this, "تعذر فتح مدير الملفات: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -276,6 +294,7 @@ class VaultActivity : AppCompatActivity() {
         // Option 4: Shoot Secret Direct Photo
         dialogBinding.optSecretCapture.setOnClickListener {
             dialog.dismiss()
+            isPickingMedia = true
             val intent = Intent(this, CameraActivity::class.java).apply {
                 putExtra(CameraActivity.EXTRA_SECRET_CAPTURE, true)
             }
@@ -286,25 +305,35 @@ class VaultActivity : AppCompatActivity() {
     }
 
     private fun importUris(uris: List<Uri>) {
-        Toast.makeText(this, "جاري تشفير الملفات وإخفائها من المعرض...", Toast.LENGTH_SHORT).show()
+        if (uris.isEmpty()) return
+
+        val progressDialog = ProgressDialog(this).apply {
+            setTitle("حفظ وتشفير الملفات")
+            setMessage("جاري التشفير والإخفاء من المعرض وسلة المهملات...")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = uris.size
+            progress = 0
+            setCancelable(false)
+            show()
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
-            var successCount = 0
-            for (uri in uris) {
-                val res = repository.importAndHideFile(uri)
-                if (res.isSuccess) {
-                    successCount++
+            val count = repository.importBatch(uris) { current, total ->
+                withContext(Dispatchers.Main) {
+                    progressDialog.progress = current
+                    progressDialog.setMessage("جاري تشفير وإخفاء الملف ($current من $total)...")
                 }
             }
 
             withContext(Dispatchers.Main) {
+                try { progressDialog.dismiss() } catch (_: Exception) {}
                 Toast.makeText(
                     this@VaultActivity,
-                    "تم تشفير وحذف $successCount ملفات من المعرض ومدير الملفات بنجاح!",
+                    "تم بنجاح تشفير وحفظ $count ملفات واختفاؤها نهائياً من المعرض وسلة المهملات!",
                     Toast.LENGTH_LONG
                 ).show()
                 loadItems()
-                AdManager.showInterstitial(this@VaultActivity, force = true)
+                AdManager.showInterstitial(this@VaultActivity, force = false)
             }
         }
     }
@@ -334,7 +363,7 @@ class VaultActivity : AppCompatActivity() {
                 repository.deletePermanently(item)
             }
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@VaultActivity, "تم الحذف النهائي", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@VaultActivity, "تم الحذف النهائي من الخزنة", Toast.LENGTH_SHORT).show()
                 adapter.clearSelection()
                 loadItems()
             }
@@ -359,7 +388,7 @@ class VaultActivity : AppCompatActivity() {
             adapter.clearSelection()
         } else {
             securityPrefs.lockVault()
-            super.onBackPressed()
+            finish()
         }
     }
 }

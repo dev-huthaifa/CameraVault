@@ -1,6 +1,5 @@
 package com.vault.secretcamera.ui.vault
 
-import android.graphics.BitmapFactory
 import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.View
@@ -88,18 +87,25 @@ class VaultAdapter(
             binding.cbSelected.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
             binding.cbSelected.isChecked = item.isSelected
 
-            // Reset image placeholder
-            binding.ivThumbnail.setImageResource(R.drawable.ic_photo)
+            binding.ivThumbnail.tag = item.id
 
-            // Decrypt thumbnail in-memory without saving unencrypted files to disk!
-            CoroutineScope(Dispatchers.IO).launch {
-                val bytes = repository.getDecryptedBytes(item)
-                if (bytes != null) {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                    withContext(Dispatchers.Main) {
-                        if (bmp != null) {
-                            binding.ivThumbnail.setImageBitmap(bmp)
+            // 1. Instant cache check (0ms overhead)
+            val cachedBmp = repository.getCachedThumbnail(item.id)
+            if (cachedBmp != null) {
+                binding.ivThumbnail.setImageBitmap(cachedBmp)
+            } else {
+                binding.ivThumbnail.setImageResource(
+                    if (item.category == VaultCategory.VIDEOS) R.drawable.ic_video else R.drawable.ic_photo
+                )
+
+                // 2. High-speed lightweight async decrypt (15KB thumbnail only)
+                CoroutineScope(Dispatchers.IO).launch {
+                    val bmp = repository.getThumbnailBitmap(item)
+                    if (bmp != null) {
+                        withContext(Dispatchers.Main) {
+                            if (binding.ivThumbnail.tag == item.id) {
+                                binding.ivThumbnail.setImageBitmap(bmp)
+                            }
                         }
                     }
                 }

@@ -17,6 +17,11 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 
 object AdManager {
 
+    private const val PREFS_NAME = "admob_vault_prefs"
+    private const val KEY_FIRST_INSTALL_TIME = "first_install_time"
+    // 45 seconds grace period on first launch ever after installation
+    private const val FIRST_SESSION_GRACE_PERIOD_MS = 45_000L
+
     private var interstitialAd: InterstitialAd? = null
     private var isInterstitialLoading: Boolean = false
     private var isInitialized: Boolean = false
@@ -35,7 +40,22 @@ object AdManager {
     }
 
     /**
-     * تحميل وعرض إعلان شريطي (Banner Ad) أسفل الشاشة
+     * Checks if user is still in the first 45-second grace period after initial install
+     */
+    fun isGracePeriodActive(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val firstTime = prefs.getLong(KEY_FIRST_INSTALL_TIME, 0L)
+        if (firstTime == 0L) {
+            // First launch recorded
+            prefs.edit().putLong(KEY_FIRST_INSTALL_TIME, System.currentTimeMillis()).apply()
+            return true
+        }
+        val elapsed = System.currentTimeMillis() - firstTime
+        return elapsed < FIRST_SESSION_GRACE_PERIOD_MS
+    }
+
+    /**
+     * تحميل وعرض إعلان شريطي (Banner Ad) أسفل الشاشة - دائم ومستمر لا ينقطع أبداً
      */
     fun loadBanner(activity: Activity, container: ViewGroup) {
         try {
@@ -53,8 +73,7 @@ object AdManager {
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    // إذا كان حساب المستخدم لا يزال قيد المراجعة في AdMob (Error 3 No Fill)
-                    // نقوم فوراً بتحميل بنر احتياطي لكي يظهر الإعلان أمامك ولن تبقى الشاشة فارغة أبداً!
+                    // إذا كان الحساب جديداً أو قيد المراجعة، يتم عرض البنر الاحتياطي ليبقى البنر شغالاً دائماً!
                     if (adView.adUnitId != AdConfig.TEST_BANNER_ID) {
                         try {
                             container.removeAllViews()
@@ -94,7 +113,7 @@ object AdManager {
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    // في حال كانت الوحدة الحقيقية قيد المراجعة، نحمل إعلان الاختبار كاحتياط
+                    // Fallback to test ID during review
                     InterstitialAd.load(
                         context,
                         AdConfig.TEST_INTERSTITIAL_ID,
@@ -117,9 +136,15 @@ object AdManager {
     }
 
     /**
-     * عرض إعلان ملء الشاشة
+     * عرض إعلان ملء الشاشة مع احترام مهلة الـ 45 ثانية الأولى بعد التثبيت
      */
     fun showInterstitial(activity: Activity, force: Boolean = false, onDismissed: () -> Unit = {}) {
+        // إذا كان المستخدم في أول 45 ثانية من أول فتحة بعد التثبيت، لا نقطعه بإعلانات بينية
+        if (isGracePeriodActive(activity)) {
+            onDismissed()
+            return
+        }
+
         val now = System.currentTimeMillis()
         if (!force && (now - lastAdShowTime < 8000L)) {
             onDismissed()
@@ -150,7 +175,7 @@ object AdManager {
     }
 
     /**
-     * إظهار الإعلان ملء الشاشة تلقائياً بعد مهلة قصيرة
+     * إظهار الإعلان ملء الشاشة تلقائياً
      */
     fun autoShow(activity: Activity, delayMs: Long = 1000L, force: Boolean = false, onDismissed: () -> Unit = {}) {
         activity.window.decorView.postDelayed({

@@ -205,13 +205,32 @@ class MediaViewerActivity : AppCompatActivity() {
 
     private fun shareCurrentItem() {
         val item = currentItem ?: return
+        isSharing = true
         SecureShareHelper.showShareDialog(this, repository, listOf(item))
+    }
+
+    private var isSharing = false
+
+    override fun onResume() {
+        super.onResume()
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+            return
+        }
+        isSharing = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isSharing && !isChangingConfigurations) {
+            securityPrefs.lockVault()
+            finish()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         tempVideoFile?.delete()
-        SecureShareHelper.cleanShareCache(this)
     }
 
     companion object {

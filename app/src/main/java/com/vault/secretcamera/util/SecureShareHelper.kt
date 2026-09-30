@@ -78,19 +78,21 @@ object SecureShareHelper {
         items: List<VaultItem>,
         target: TargetApp
     ) {
-        Toast.makeText(activity, "جاري فك التشفير الآمن للمشاركة المباشرة...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(activity, "جاري تحضير الملفات للمشاركة...", Toast.LENGTH_SHORT).show()
 
         CoroutineScope(Dispatchers.IO).launch {
+            cleanOldShareCache(activity)
             val uris = mutableListOf<Uri>()
             val shareDir = File(activity.cacheDir, "secure_share").apply { mkdirs() }
 
             for (item in items) {
                 val bytes = repository.getDecryptedBytes(item) ?: continue
-                val tempFile = File(shareDir, item.originalName)
+                val safeName = sanitizeFileName(item.originalName)
+                val tempFile = File(shareDir, safeName)
                 FileOutputStream(tempFile).use { it.write(bytes) }
 
                 val uri = FileProvider.getUriForFile(
-                    activity,
+                    activity.applicationContext,
                     "${activity.packageName}.provider",
                     tempFile
                 )
@@ -115,9 +117,11 @@ object SecureShareHelper {
         target: TargetApp
     ) {
         val mimeType = resolveCommonMimeType(items)
-        val intent = Intent(if (uris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+        val isSingle = uris.size == 1
+
+        val intent = Intent(if (isSingle) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
             type = mimeType
-            if (uris.size == 1) {
+            if (isSingle) {
                 putExtra(Intent.EXTRA_STREAM, uris.first())
             } else {
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
@@ -142,17 +146,36 @@ object SecureShareHelper {
         try {
             if (pkgName != null) {
                 intent.setPackage(pkgName)
+                for (uri in uris) {
+                    context.grantUriPermission(pkgName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
                 context.startActivity(intent)
             } else {
                 if (target != TargetApp.ALL_APPS) {
                     Toast.makeText(context, "التطبيق المختار غير مثبت، جاري فتح قائمة المشاركة الشاملة", Toast.LENGTH_SHORT).show()
                 }
-                context.startActivity(Intent.createChooser(intent, context.getString(R.string.btn_share)))
+                val chooser = Intent.createChooser(intent, context.getString(R.string.btn_share))
+                val resInfoList = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                for (resolveInfo in resInfoList) {
+                    val pName = resolveInfo.activityInfo.packageName
+                    for (uri in uris) {
+                        context.grantUriPermission(pName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                }
+                context.startActivity(chooser)
             }
         } catch (e: Exception) {
             try {
                 intent.setPackage(null)
-                context.startActivity(Intent.createChooser(intent, context.getString(R.string.btn_share)))
+                val chooser = Intent.createChooser(intent, context.getString(R.string.btn_share))
+                val resInfoList = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                for (resolveInfo in resInfoList) {
+                    val pName = resolveInfo.activityInfo.packageName
+                    for (uri in uris) {
+                        context.grantUriPermission(pName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                }
+                context.startActivity(chooser)
             } catch (ex: Exception) {
                 Toast.makeText(context, "تعذر فتح المشاركة: ${ex.message}", Toast.LENGTH_SHORT).show()
             }
@@ -185,11 +208,23 @@ object SecureShareHelper {
         return "*/*"
     }
 
-    fun cleanShareCache(context: Context) {
+    private fun sanitizeFileName(name: String): String {
+        return name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    }
+
+    /**
+     * Safely cleans cache files older than 15 minutes, preserving currently shared files
+     */
+    fun cleanOldShareCache(context: Context) {
         try {
             val shareDir = File(context.cacheDir, "secure_share")
             if (shareDir.exists()) {
-                shareDir.deleteRecursively()
+                val now = System.currentTimeMillis()
+                shareDir.listFiles()?.forEach { file ->
+                    if (now - file.lastModified() > 15 * 60 * 1000L) {
+                        file.delete()
+                    }
+                }
             }
         } catch (_: Exception) {}
     }

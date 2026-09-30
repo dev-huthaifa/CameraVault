@@ -43,6 +43,21 @@ class IntruderLogActivity : AppCompatActivity() {
         loadLogs()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            securityPrefs.lockVault()
+            finish()
+        }
+    }
+
     private fun setupToolbar() {
         setSupportActionBar(binding.intruderToolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)

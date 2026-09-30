@@ -273,4 +273,11 @@ class AuthActivity : AppCompatActivity() {
             .setNegativeButtonText(getString(R.string.btn_cancel))
             .build()
     }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            finish()
+        }
+    }
 }

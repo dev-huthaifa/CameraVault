@@ -47,6 +47,21 @@ class SettingsActivity : AppCompatActivity() {
         setupDeveloperSettings()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            securityPrefs.lockVault()
+            finish()
+        }
+    }
+
     private fun setupToolbar() {
         setSupportActionBar(binding.settingsToolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
