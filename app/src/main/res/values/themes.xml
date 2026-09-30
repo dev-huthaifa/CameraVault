@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base Application Theme -->
+    <style name="Theme.SecretCamera" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:statusBarColor">@color/vault_bg_dark</item>
+        <item name="android:navigationBarColor">@color/vault_bg_dark</item>
+        <item name="android:windowBackground">@color/vault_bg_dark</item>
+        <item name="colorPrimary">@color/vault_accent_cyan</item>
+        <item name="colorSecondary">@color/vault_accent_purple</item>
+        <item name="colorSurface">@color/vault_surface_dark</item>
+    </style>
+
+    <!-- Fullscreen Camera Theme -->
+    <style name="Theme.SecretCamera.Fullscreen" parent="Theme.SecretCamera">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+</resources>

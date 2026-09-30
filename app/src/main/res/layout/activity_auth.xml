@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/authRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/vault_bg_dark"
+    android:padding="24dp">
+
+    <!-- Close / Return to Camera Disguise -->
+    <ImageButton
+        android:id="@+id/btnCloseAuth"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Close"
+        android:src="@drawable/ic_camera_launcher"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="@color/vault_accent_cyan" />
+
+    <!-- Secret Vault Icon -->
+    <ImageView
+        android:id="@+id/ivVaultLogo"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_marginTop="32dp"
+        android:src="@drawable/ic_vault_lock"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnCloseAuth" />
+
+    <TextView
+        android:id="@+id/tvAuthTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/vault_title"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/ivVaultLogo" />
+
+    <TextView
+        android:id="@+id/tvAuthSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/enter_pin"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvAuthTitle" />
+
+    <!-- PIN Dots Container -->
+    <LinearLayout
+        android:id="@+id/dotsContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvAuthSubtitle">
+
+        <View
+            android:id="@+id/dot1"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_pin_digit" />
+
+        <View
+            android:id="@+id/dot2"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_pin_digit" />
+
+        <View
+            android:id="@+id/dot3"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_pin_digit" />
+
+        <View
+            android:id="@+id/dot4"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_pin_digit" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvErrorMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="@color/vault_accent_red"
+        android:textSize="13sp"
+        android:visibility="invisible"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/dotsContainer"
+        tools:text="رمز غير صحيح" />
+
+    <!-- Numeric Keypad Grid -->
+    <GridLayout
+        android:id="@+id/keypadGrid"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:columnCount="3"
+        android:orientation="horizontal"
+        android:rowCount="4"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvErrorMessage">
+
+        <!-- Row 1 -->
+        <Button
+            android:id="@+id/btn1"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="1"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn2"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="2"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn3"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="3"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <!-- Row 2 -->
+        <Button
+            android:id="@+id/btn4"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="4"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn5"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="5"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn6"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="6"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <!-- Row 3 -->
+        <Button
+            android:id="@+id/btn7"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="7"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn8"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="8"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/btn9"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="9"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <!-- Row 4 -->
+        <ImageButton
+            android:id="@+id/btnBiometric"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:contentDescription="Biometric"
+            android:src="@drawable/ic_fingerprint" />
+
+        <Button
+            android:id="@+id/btn0"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:text="0"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
+
+        <ImageButton
+            android:id="@+id/btnBackspace"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/bg_pin_digit"
+            android:contentDescription="Backspace"
+            android:src="@drawable/ic_backspace" />
+    </GridLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

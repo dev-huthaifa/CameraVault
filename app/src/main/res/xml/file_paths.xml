@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="vault_export" path="export/" />
+    <cache-path name="vault_temp" path="temp/" />
+    <cache-path name="vault_share" path="secure_share/" />
+    <cache-path name="vault_cache" path="." />
+</paths>

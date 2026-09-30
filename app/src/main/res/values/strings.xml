@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Names -->
+    <string name="app_name">خزنة الكاميرا</string>
+    <string name="app_store_name">خزنة الكاميرا</string>
+    <string name="app_disguise_name">الكاميرا HD</string>
+    <string name="vault_title">الخزنة</string>
+
+    <!-- Developer & Support Info -->
+    <string name="section_developer_info">معلومات المطور والدعم الفني</string>
+    <string name="developer_name_title">مطور التطبيق</string>
+    <string name="developer_name_value">Eng. Huthaifa Aref</string>
+    <string name="developer_email_title">مراسلة عبر البريد الإلكتروني</string>
+    <string name="developer_email_value">eng.huthaifa.aref.1611@gmail.com</string>
+    <string name="developer_rights">جميع الحقوق محفوظة © 2026 Eng. Huthaifa Aref</string>
+
+    <!-- Camera Disguise -->
+    <string name="camera_permission_needed">يتطلب التطبيق إذن الكاميرا للتشغيل</string>
+    <string name="photo_saved">تم التقاط الصورة وحفظها في المعرض</string>
+    <string name="camera_flip">تبديل الكاميرا</string>
+    <string name="camera_flash">الفلاش</string>
+    <string name="camera_shutter">التقاط</string>
+    <string name="gesture_hint">ارسم دائرة ⭕ على الشاشة لفتح الخزنة السرية</string>
+    <string name="secret_trigger_detected">تم التعرف على الإيماءة السرية!</string>
+
+    <!-- Auth & PIN -->
+    <string name="enter_pin">أدخل رمز الدخول السري</string>
+    <string name="setup_pin_title">تعيين رمز الحماية للخزنة</string>
+    <string name="confirm_pin_title">تأكيد رمز الحماية</string>
+    <string name="pin_mismatch">الرمزان غير متطابقين، حاول مجدداً</string>
+    <string name="wrong_pin">رمز المرور غير صحيح!</string>
+    <string name="decoy_vault_opened">تم فتح وضع الضيف (الخزنة الوهمية)</string>
+    <string name="biometric_prompt_title">تسجيل الدخول بالبصمة</string>
+    <string name="biometric_prompt_desc">استخدم بصمة الإصبع أو الوجه لفتح الخزنة</string>
+    <string name="setup_decoy_pin">تعيين رمز تمويهي (خزنة وهمية)</string>
+    <string name="decoy_pin_desc">إذا أجبرك أحد على فتح الخزنة، أدخل هذا الرمز ليفتح خزنة فارغة تماماً دون الوصول لملفاتك الحقيقية</string>
+
+    <!-- Vault Categories -->
+    <string name="tab_photos">الصور</string>
+    <string name="tab_videos">الفيديوهات</string>
+    <string name="tab_documents">المستندات</string>
+    <string name="tab_audio">الصوتيات</string>
+    <string name="tab_all">كل الملفات</string>
+
+    <!-- Vault Actions -->
+    <string name="add_to_vault">إضافة وتشفير ملفات</string>
+    <string name="secret_camera_capture">تصوير سري مباشر للخزنة</string>
+    <string name="import_photos">استيراد صور من المعرض</string>
+    <string name="import_videos">استيراد فيديوهات من المعرض</string>
+    <string name="import_documents">استيراد مستندات وملفات</string>
+    <string name="empty_vault_title">الخزنة فارغة</string>
+    <string name="empty_vault_subtitle">اضغط على زر (+) لإضافة صورك وملفاتك وإخفائها من المعرض ومدير الملفات نهائياً</string>
+
+    <!-- Security & Encryption -->
+    <string name="encryption_badge">خاص</string>
+    <string name="file_imported_success">تم حفظ الملف وإخفاؤه بنجاح</string>
+    <string name="file_restored_success">تم استعادة الملف إلى المعرض بنجاح</string>
+    <string name="delete_confirm_title">حذف نهائي من الخزنة</string>
+    <string name="delete_confirm_message">هل أنت متأكد من حذف هذا الملف نهائياً؟ لن يمكن استرجاعه مجدداً.</string>
+    <string name="restore_confirm_title">استعادة إلى المعرض</string>
+    <string name="restore_confirm_message">سيتم فك تشفير الملف وإعادته للمعرض ومدير الملفات ليكون ظاهراً للجميع. هل تريد المتابعة؟</string>
+
+    <!-- Settings -->
+    <string name="settings_title">إعدادات الأمان والحماية</string>
+    <string name="setting_change_pin">تغيير رمز الحماية الأساسي</string>
+    <string name="setting_decoy_pin">إعداد الرمز التمويهي (الخزنة الوهمية)</string>
+    <string name="setting_anti_screenshot">حظر تصوير الشاشة (Anti-Screenshot)</string>
+    <string name="setting_anti_screenshot_desc">منع أخذ لقطات شاشة أو تسجيل فيديو داخل الخزنة وإخفائها من قائمة التطبيقات الحديثة</string>
+    <string name="setting_intruder_selfie">سيلفي الدخيل (Intruder Selfie)</string>
+    <string name="setting_intruder_selfie_desc">التقاط صورة سرية بالكاميرا الأمامية لأي شخص يدخل الرمز خطأ 3 مرات</string>
+    <string name="setting_biometric">تفعيل الفتح بالبصمة</string>
+    <string name="setting_circle_sensitivity">حساسية إيماءة الدائرة</string>
+    <string name="intruder_logs_title">سجل محاولات الاختراق</string>
+    <string name="no_intruders">لا توجد محاولات اختراق مسجلة</string>
+
+    <!-- Secret Gesture & Camouflage Settings -->
+    <string name="section_gesture_stealth">إيماءة الفتح السرية والتمويه</string>
+    <string name="setting_secret_shape">شكل الإيماءة السرية</string>
+    <string name="setting_secret_shape_desc">الحركة السرية المرسومة على الكاميرا لفتح الخزنة</string>
+    <string name="setting_show_stroke">إظهار أثر الرسم على الشاشة</string>
+    <string name="setting_show_stroke_desc">الافتراضي مخفي للسرية التامة لكي لا تظهر أي خطوط أثناء الرسم</string>
+    <string name="shape_circle">دائرة ⭕ (رسم حلقة مغلقة)</string>
+    <string name="shape_triangle">مثلث 🔺 (رسم 3 أضلاع مغلقة)</string>
+    <string name="shape_square">مربع 🔲 (رسم 4 أضلاع مغلقة)</string>
+    <string name="shape_z">حرف Z ⚡ (رسم حرف Z بثلاث ضربات)</string>
+    <string name="shape_multi_tap">4 نقرات سريعة 👆 (الضغط 4 مرات متتالية)</string>
+
+    <!-- Real Camera Settings (Disguise Camouflage) -->
+    <string name="camera_settings_title">إعدادات الكاميرا</string>
+    <string name="camera_resolution_title">دقة الصورة والفيديو</string>
+    <string name="camera_resolution_desc">جودة المستشعر ومعدل الإطارات</string>
+    <string name="camera_grid_title">خطوط الشبكة (Grid Lines)</string>
+    <string name="camera_grid_desc">عرض شبكة التوجيه لتوسيط ومحاذاة اللقطات</string>
+    <string name="camera_shutter_sound_title">صوت الالتقاط</string>
+    <string name="camera_shutter_sound_desc">تشغيل صوت غالق الكاميرا عند التصوير</string>
+    <string name="camera_timer_title">المؤقت الذاتي</string>
+    <string name="camera_timer_desc">العد التنازلي قبل التقاط الصورة</string>
+    <string name="camera_storage_title">مسار التخزين</string>
+    <string name="camera_storage_desc">وحدة التخزين الداخلية / DCIM / Camera</string>
+    <string name="camera_version_title">الإصدار</string>
+    <string name="camera_version_val">كاميرا HD Pro v2.4.1</string>
+
+    <!-- Quick Secure Direct Share -->
+    <string name="quick_share_title">مشاركة سرية ومباشرة</string>
+    <string name="quick_share_desc">مشاركة آمنة وفورية دون استعادة للمعرّض ودون ترك أي أثر على الجهاز</string>
+    <string name="share_whatsapp">واتساب (WhatsApp)</string>
+    <string name="share_whatsapp_desc">إرسال فوري ومباشر إلى محادثات واتساب</string>
+    <string name="share_instagram">إنستغرام (Instagram)</string>
+    <string name="share_instagram_desc">مشاركة في المحادثات الخاصة، المنشورات، أو القصة</string>
+    <string name="share_telegram">تليجرام (Telegram)</string>
+    <string name="share_telegram_desc">إرسال آمن عبر تطبيق تليجرام</string>
+    <string name="share_all_apps">جميع التطبيقات الأخرى...</string>
+    <string name="share_all_apps_desc">فتح نافذة المشاركة الشاملة للهاتف لاختيار أي تطبيق مثبت</string>
+
+
+    <!-- Buttons -->
+    <string name="btn_confirm">تأكيد</string>
+    <string name="btn_cancel">إلغاء</string>
+    <string name="btn_delete">حذف</string>
+    <string name="btn_restore">استعادة</string>
+    <string name="btn_share">مشاركة آمنة</string>
+    <string name="btn_save">حفظ</string>
+</resources>
