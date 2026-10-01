@@ -1,15 +1,21 @@
 package com.vault.secretcamera.ui.viewer
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
 import com.vault.secretcamera.R
 import com.vault.secretcamera.SecretVaultApp
 import com.vault.secretcamera.ads.AdManager
@@ -19,20 +25,25 @@ import com.vault.secretcamera.model.VaultCategory
 import com.vault.secretcamera.model.VaultItem
 import com.vault.secretcamera.security.SecurityPreferences
 import com.vault.secretcamera.util.SecureShareHelper
+import com.vault.secretcamera.util.SecurityAuditDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 
-class MediaViewerActivity : AppCompatActivity() {
+class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var binding: ActivityMediaViewerBinding
     private lateinit var repository: VaultRepository
     private lateinit var securityPrefs: SecurityPreferences
     private var currentItem: VaultItem? = null
     private var tempVideoFile: File? = null
+    private var isSharing = false
+
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private var lastFlipTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +74,9 @@ class MediaViewerActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         setupToolbar()
         setupActions()
@@ -98,6 +112,12 @@ class MediaViewerActivity : AppCompatActivity() {
                 }
                 .setNegativeButton(R.string.btn_cancel, null)
                 .show()
+        }
+
+        // Live Cryptographic Audit for Current File
+        binding.btnAuditViewer.setOnClickListener {
+            val item = currentItem ?: return@setOnClickListener
+            SecurityAuditDialog.show(this, repository, securityPrefs, item)
         }
 
         // Delete Permanently
@@ -209,7 +229,37 @@ class MediaViewerActivity : AppCompatActivity() {
         SecureShareHelper.showShareDialog(this, repository, listOf(item))
     }
 
-    private var isSharing = false
+    // Flip to Lock (Emergency Face Down)
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+        if (!securityPrefs.isFlipToLockEnabled) return
+
+        val z = event.values[2]
+        if (z < -7.0f) {
+            val now = System.currentTimeMillis()
+            if (now - lastFlipTime > 1500L) {
+                lastFlipTime = now
+                triggerEmergencyLock()
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun triggerEmergencyLock() {
+        try {
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createOneShot(70, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(70)
+            }
+        } catch (_: Exception) {}
+
+        securityPrefs.lockVault()
+        finish()
+    }
 
     override fun onResume() {
         super.onResume()
@@ -218,6 +268,16 @@ class MediaViewerActivity : AppCompatActivity() {
             return
         }
         isSharing = false
+        if (securityPrefs.isFlipToLockEnabled) {
+            accelerometer?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(this)
     }
 
     override fun onStop() {

@@ -88,6 +88,25 @@ class SettingsActivity : AppCompatActivity() {
             securityPrefs.isBiometricEnabled = isChecked
             Toast.makeText(this, "تم تحديث إعداد فتح القفل بالبصمة", Toast.LENGTH_SHORT).show()
         }
+
+        binding.switchFlipToLock.isChecked = securityPrefs.isFlipToLockEnabled
+        binding.switchFlipToLock.setOnCheckedChangeListener { _, isChecked ->
+            securityPrefs.isFlipToLockEnabled = isChecked
+            val msg = if (isChecked) "تم تفعيل قفل الطوارئ بقلب الهاتف" else "تم تعطيل قفل الطوارئ بقلب الهاتف"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        binding.switchDataShredding.isChecked = securityPrefs.isDataShreddingEnabled
+        binding.switchDataShredding.setOnCheckedChangeListener { _, isChecked ->
+            securityPrefs.isDataShreddingEnabled = isChecked
+            val msg = if (isChecked) "تم تفعيل التمزيق الرقمي الآمن (Anti-Forensics)" else "تم تعطيل التمزيق الرقمي الآمن"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        binding.rowSecurityAudit.setOnClickListener {
+            val repository = (application as SecretVaultApp).vaultRepository
+            com.vault.secretcamera.util.SecurityAuditDialog.show(this, repository, securityPrefs)
+        }
     }
 
     private fun setupPinDialogs() {

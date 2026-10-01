@@ -117,6 +117,17 @@
             android:src="@drawable/ic_share"
             app:tint="@color/vault_accent_cyan" />
 
+        <!-- Cryptographic Audit Button -->
+        <ImageButton
+            android:id="@+id/btnAuditViewer"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Audit"
+            android:src="@drawable/ic_shield"
+            app:tint="@color/vault_accent_gold" />
+
         <!-- Delete Permanently Button -->
         <ImageButton
             android:id="@+id/btnDeleteViewer"

@@ -139,6 +139,16 @@ class SecurityPreferences(private val context: Context) {
         get() = prefs.getBoolean(KEY_SHOW_GESTURE_STROKE, false)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_GESTURE_STROKE, value).apply()
 
+    // Flip to Lock (Emergency Face-Down Lock)
+    var isFlipToLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FLIP_TO_LOCK, true)
+        set(value) = prefs.edit().putBoolean(KEY_FLIP_TO_LOCK, value).apply()
+
+    // Military Data Shredding (Anti-Forensic Overwrite)
+    var isDataShreddingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_DATA_SHREDDING, true)
+        set(value) = prefs.edit().putBoolean(KEY_DATA_SHREDDING, value).apply()
+
     // Clear session key upon locking
     fun lockVault() {
         currentMasterKey = null
@@ -170,5 +180,7 @@ class SecurityPreferences(private val context: Context) {
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
         private const val KEY_SECRET_GESTURE_SHAPE = "secret_gesture_shape"
         private const val KEY_SHOW_GESTURE_STROKE = "show_gesture_stroke"
+        private const val KEY_FLIP_TO_LOCK = "flip_to_lock"
+        private const val KEY_DATA_SHREDDING = "data_shredding"
     }
 }

@@ -2,11 +2,18 @@ package com.vault.secretcamera.ui.vault
 
 import android.app.AlertDialog
 import android.app.ProgressDialog
+import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.MediaStore
 import android.provider.Settings
 import android.view.View
@@ -32,12 +39,13 @@ import com.vault.secretcamera.ui.intruder.IntruderLogActivity
 import com.vault.secretcamera.ui.settings.SettingsActivity
 import com.vault.secretcamera.ui.viewer.MediaViewerActivity
 import com.vault.secretcamera.util.SecureShareHelper
+import com.vault.secretcamera.util.SecurityAuditDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class VaultActivity : AppCompatActivity() {
+class VaultActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var binding: ActivityVaultBinding
     private lateinit var repository: VaultRepository
@@ -46,6 +54,10 @@ class VaultActivity : AppCompatActivity() {
 
     private var currentCategory = VaultCategory.ALL
     private var isPickingMedia = false
+
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private var lastFlipTime = 0L
 
     // System Delete Request for Android 11+ (Permanently deletes files from MediaStore & Trash)
     private val deleteRequestLauncher = registerForActivityResult(
@@ -121,6 +133,9 @@ class VaultActivity : AppCompatActivity() {
             )
         }
 
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
         setupToolbar()
         setupTabs()
         setupRecyclerView()
@@ -145,6 +160,17 @@ class VaultActivity : AppCompatActivity() {
         AdManager.loadBanner(this, binding.adBannerContainer)
         AdManager.loadInterstitial(this)
         AdManager.autoShow(this, delayMs = 800L, force = false)
+
+        if (securityPrefs.isFlipToLockEnabled) {
+            accelerometer?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(this)
     }
 
     override fun onStop() {
@@ -156,7 +182,44 @@ class VaultActivity : AppCompatActivity() {
         }
     }
 
+    // Flip to Lock (Emergency Face Down Sensor Trigger)
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+        if (!securityPrefs.isFlipToLockEnabled) return
+
+        val z = event.values[2]
+        if (z < -7.0f) {
+            val now = System.currentTimeMillis()
+            if (now - lastFlipTime > 1500L) {
+                lastFlipTime = now
+                triggerEmergencyLock()
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun triggerEmergencyLock() {
+        try {
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createOneShot(70, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(70)
+            }
+        } catch (_: Exception) {}
+
+        securityPrefs.lockVault()
+        finish()
+    }
+
     private fun setupToolbar() {
+        // Live Cryptographic Audit Button
+        binding.btnSecurityAudit.setOnClickListener {
+            SecurityAuditDialog.show(this, repository, securityPrefs)
+        }
+
         binding.btnLockVault.setOnClickListener {
             securityPrefs.lockVault()
             finish()
