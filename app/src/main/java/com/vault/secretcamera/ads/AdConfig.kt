@@ -18,7 +18,16 @@ object AdConfig {
     const val UNITY_ORGANIZATION_ID = "18968513356872"
     const val UNITY_INTERSTITIAL_ID = "BP_Interstitial_Android"
     const val UNITY_BANNER_ID = "BP_Banner_Android"
-    const val UNITY_TEST_MODE = false // نمط حقيقي لتحقيق الأرباح المباشرة
+
+    /**
+     * هام جداً: شبكة Unity Ads ترفض إرسال إعلانات مدفوعة للتطبيقات غير المنشورة على Google Play
+     * (لأنه في لوحة التحكم Store ID: Not set)، وبالتالي كانت خوادم Unity تُرجع NO_FILL فيتحول
+     * التطبيق فوراً إلى AdMob!
+     * تفعيل Test Mode هنا يضمن ظهور إعلانات Unity بنسبة 100% للتأكد والتجربة.
+     * وفور نشر التطبيق على المتجر يتم تحويلها إلى false لتبدأ الأرباح المالية المباشرة.
+     */
+    const val UNITY_TEST_MODE = true
+
 
     fun isUnityAdsConfigured(): Boolean = UNITY_GAME_ID.isNotBlank()
 

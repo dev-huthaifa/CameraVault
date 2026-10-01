@@ -2,6 +2,9 @@ package com.vault.secretcamera.ads
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -26,10 +29,11 @@ import com.unity3d.services.banners.UnityBannerSize
 
 object AdManager {
 
+    private const val TAG = "UnityAdsVault"
     private const val PREFS_NAME = "admob_vault_prefs"
     private const val KEY_FIRST_INSTALL_TIME = "first_install_time"
-    // 45 seconds grace period on first launch ever after installation
-    private const val FIRST_SESSION_GRACE_PERIOD_MS = 45_000L
+    // 30 seconds grace period on first launch ever after installation
+    private const val FIRST_SESSION_GRACE_PERIOD_MS = 30_000L
 
     // Unity Ads state (Primary high-eCPM network)
     private var isUnityInitialized: Boolean = false
@@ -46,11 +50,16 @@ object AdManager {
     var isAdShowing: Boolean = false
         private set
 
+    // Pending banner requests if Unity Ads is still initializing
+    private var pendingBannerActivity: Activity? = null
+    private var pendingBannerContainer: ViewGroup? = null
+
     fun init(context: Context) {
         val appContext = context.applicationContext
 
         // 1. Initialize Unity Ads (Primary Network)
         if (AdConfig.isUnityAdsConfigured() && !isUnityInitialized) {
+            Log.d(TAG, "Initializing Unity Ads with Game ID: ${AdConfig.UNITY_GAME_ID}, testMode: ${AdConfig.UNITY_TEST_MODE}")
             try {
                 UnityAds.initialize(
                     appContext,
@@ -58,20 +67,33 @@ object AdManager {
                     AdConfig.UNITY_TEST_MODE,
                     object : IUnityAdsInitializationListener {
                         override fun onInitializationComplete() {
+                            Log.d(TAG, "Unity Ads initialized successfully!")
                             isUnityInitialized = true
                             loadInterstitial(appContext)
+
+                            // Load queued banner if waiting for initialization
+                            val act = pendingBannerActivity
+                            val cnt = pendingBannerContainer
+                            if (act != null && cnt != null && !act.isFinishing && !act.isDestroyed) {
+                                act.runOnUiThread {
+                                    loadBanner(act, cnt)
+                                }
+                            }
+                            pendingBannerActivity = null
+                            pendingBannerContainer = null
                         }
 
                         override fun onInitializationFailed(
                             error: UnityAds.UnityAdsInitializationError,
                             message: String
                         ) {
+                            Log.e(TAG, "Unity Ads initialization failed: $error - $message")
                             isUnityInitialized = false
                         }
                     }
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Unity Ads init exception", e)
             }
         }
 
@@ -80,7 +102,7 @@ object AdManager {
             try {
                 MobileAds.initialize(appContext) {
                     isAdmobInitialized = true
-                    loadInterstitial(appContext)
+                    loadAdmobInterstitial(appContext)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -89,7 +111,7 @@ object AdManager {
     }
 
     /**
-     * Checks if user is still in the first 45-second grace period after initial install
+     * Checks if user is still in the first grace period after initial install
      */
     fun isGracePeriodActive(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -104,14 +126,23 @@ object AdManager {
 
     /**
      * تحميل وعرض إعلان شريطي (Banner Ad) أسفل الشاشة
-     * الأولوية لـ Unity Ads (الأعلى عائداً في اليمن والعالم)، والبديل الفوري هو AdMob
+     * الأولوية لـ Unity Ads، والبديل هو AdMob
      */
     fun loadBanner(activity: Activity, container: ViewGroup) {
         if (!AdConfig.isAdsEnabled) return
 
-        // 1. تجربة تحميل بنر Unity Ads أولاً
+        // 1. إذا كانت Unity Ads قيد التهيئة، ننتظر انتهاء التهيئة ولا نقفز فوراً إلى AdMob
+        if (AdConfig.isUnityAdsConfigured() && !isUnityInitialized) {
+            Log.d(TAG, "Unity Ads still initializing, queuing banner request...")
+            pendingBannerActivity = activity
+            pendingBannerContainer = container
+            return
+        }
+
+        // 2. تحميل بنر Unity Ads كخيار أساسي
         if (AdConfig.isUnityAdsConfigured() && AdConfig.UNITY_BANNER_ID.isNotBlank()) {
             try {
+                Log.d(TAG, "Loading Unity Banner: ${AdConfig.UNITY_BANNER_ID}")
                 container.removeAllViews()
                 val bannerView = BannerView(
                     activity,
@@ -121,10 +152,12 @@ object AdManager {
 
                 bannerView.listener = object : BannerView.IListener {
                     override fun onBannerLoaded(bannerAdView: BannerView?) {
+                        Log.d(TAG, "Unity Banner loaded successfully!")
                         container.visibility = View.VISIBLE
                     }
 
                     override fun onBannerShown(bannerAdView: BannerView?) {
+                        Log.d(TAG, "Unity Banner shown on screen!")
                         container.visibility = View.VISIBLE
                     }
 
@@ -132,11 +165,14 @@ object AdManager {
                         bannerAdView: BannerView?,
                         errorInfo: BannerErrorInfo?
                     ) {
-                        // في حال فشل تحميل Unity ننتقل فوراً إلى AdMob كبديل احتياطي
+                        Log.w(TAG, "Unity Banner failed to load: ${errorInfo?.errorMessage} (code: ${errorInfo?.errorCode}), falling back to AdMob")
                         loadAdmobBanner(activity, container)
                     }
 
-                    override fun onBannerClick(bannerAdView: BannerView?) {}
+                    override fun onBannerClick(bannerAdView: BannerView?) {
+                        Log.d(TAG, "Unity Banner clicked")
+                    }
+
                     override fun onBannerLeftApplication(bannerAdView: BannerView?) {}
                 }
 
@@ -149,16 +185,17 @@ object AdManager {
                 bannerView.load()
                 return
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Unity Banner exception", e)
             }
         }
 
-        // 2. إذا لم يكن Unity متوفراً أو فشل، نحمل AdMob فوراً
+        // 3. إذا لم تكن Unity متوفرة، نحمل AdMob فوراً
         loadAdmobBanner(activity, container)
     }
 
     private fun loadAdmobBanner(activity: Activity, container: ViewGroup) {
         try {
+            Log.d(TAG, "Loading AdMob fallback banner")
             container.removeAllViews()
             val adView = AdView(activity).apply {
                 setAdSize(AdSize.BANNER)
@@ -194,7 +231,7 @@ object AdManager {
     }
 
     /**
-     * تحميل مسبق للإعلانات البينية (Unity Ads + AdMob)
+     * تحميل مسبق للإعلانات البينية (Unity Ads أولاً، ثم AdMob كاحتياطي)
      */
     fun loadInterstitial(context: Context) {
         if (!AdConfig.isAdsEnabled) return
@@ -203,11 +240,13 @@ object AdManager {
         if (AdConfig.isUnityAdsConfigured() && AdConfig.UNITY_INTERSTITIAL_ID.isNotBlank()) {
             if (!isUnityInterstitialLoaded && !isUnityInterstitialLoading) {
                 isUnityInterstitialLoading = true
+                Log.d(TAG, "Loading Unity Interstitial: ${AdConfig.UNITY_INTERSTITIAL_ID}")
                 try {
                     UnityAds.load(
                         AdConfig.UNITY_INTERSTITIAL_ID,
                         object : IUnityAdsLoadListener {
                             override fun onUnityAdsAdLoaded(placementId: String) {
+                                Log.d(TAG, "Unity Interstitial loaded successfully!")
                                 isUnityInterstitialLoaded = true
                                 isUnityInterstitialLoading = false
                             }
@@ -217,6 +256,7 @@ object AdManager {
                                 error: UnityAds.UnityAdsLoadError,
                                 message: String
                             ) {
+                                Log.w(TAG, "Unity Interstitial failed to load: $error - $message")
                                 isUnityInterstitialLoaded = false
                                 isUnityInterstitialLoading = false
                             }
@@ -224,12 +264,16 @@ object AdManager {
                     )
                 } catch (e: Exception) {
                     isUnityInterstitialLoading = false
-                    e.printStackTrace()
+                    Log.e(TAG, "Unity Ads load exception", e)
                 }
             }
         }
 
-        // 2. تحميل إعلان Google AdMob الاحتياطي لضمان توفر إعلان دائماً
+        // 2. تحميل AdMob احتياطياً
+        loadAdmobInterstitial(context)
+    }
+
+    private fun loadAdmobInterstitial(context: Context) {
         if (admobInterstitialAd == null && !isAdmobInterstitialLoading) {
             isAdmobInterstitialLoading = true
             val adRequest = AdRequest.Builder().build()
@@ -268,8 +312,10 @@ object AdManager {
 
     /**
      * عرض الإعلان البيني:
-     * 1. الأولوية لـ Unity Ads (الأعلى عائداً في اليمن والشرق الأوسط)
-     * 2. البديل الفوري التلقائي هو Google AdMob لضمان عدم ضياع أي ظهور
+     * الأولوية المطلقة لـ Unity Ads:
+     * 1. إذا كان إعلان Unity جاهزاً -> يُعرض فوراً!
+     * 2. إذا كان إعلان Unity قيد التحميل -> ننتظر حتى ثانيتين لاكتماله بدلاً من سرقة AdMob للشاشة!
+     * 3. إذا فشل Unity بعد الانتظار -> ننتقل لـ AdMob كبديل احتياطي.
      */
     fun showInterstitial(activity: Activity, force: Boolean = false, onDismissed: () -> Unit = {}) {
         if (!AdConfig.isAdsEnabled || isGracePeriodActive(activity)) {
@@ -283,53 +329,87 @@ object AdManager {
             return
         }
 
-        // خيار 1: إعلان Unity Ads جاهز
+        // 1. إعلان Unity Ads جاهز
         if (isUnityInterstitialLoaded && AdConfig.isUnityAdsConfigured()) {
-            lastAdShowTime = now
-            isAdShowing = true
-            isUnityInterstitialLoaded = false
-
-            try {
-                UnityAds.show(
-                    activity,
-                    AdConfig.UNITY_INTERSTITIAL_ID,
-                    UnityAdsShowOptions(),
-                    object : IUnityAdsShowListener {
-                        override fun onUnityAdsShowStart(placementId: String) {
-                            isAdShowing = true
-                        }
-
-                        override fun onUnityAdsShowClick(placementId: String) {}
-
-                        override fun onUnityAdsShowComplete(
-                            placementId: String,
-                            state: UnityAds.UnityAdsShowCompletionState
-                        ) {
-                            isAdShowing = false
-                            loadInterstitial(activity)
-                            onDismissed()
-                        }
-
-                        override fun onUnityAdsShowFailure(
-                            placementId: String,
-                            error: UnityAds.UnityAdsShowError,
-                            message: String
-                        ) {
-                            isAdShowing = false
-                            // في حال الفشل أثناء العرض، نعرض AdMob كبديل مباشر
-                            showAdmobInterstitial(activity, force = true, onDismissed = onDismissed)
-                        }
-                    }
-                )
-                return
-            } catch (e: Exception) {
-                isAdShowing = false
-                e.printStackTrace()
-            }
+            Log.d(TAG, "Showing Unity Interstitial Ad now!")
+            showUnityInterstitial(activity, onDismissed)
+            return
         }
 
-        // خيار 2: استخدام Google AdMob كبديل فوري
+        // 2. إعلان Unity قيد التحميل: ننتظر قليلاً لإعطاء الأولوية التامة لـ Unity Ads
+        if (isUnityInterstitialLoading && AdConfig.isUnityAdsConfigured()) {
+            Log.d(TAG, "Unity Interstitial is currently loading, waiting up to 2.5s for it...")
+            var checkCount = 0
+            val handler = Handler(Looper.getMainLooper())
+            val checkRunnable = object : Runnable {
+                override fun run() {
+                    checkCount++
+                    if (isUnityInterstitialLoaded) {
+                        Log.d(TAG, "Unity Interstitial ready! Showing now.")
+                        showUnityInterstitial(activity, onDismissed)
+                    } else if (checkCount < 10 && isUnityInterstitialLoading) {
+                        handler.postDelayed(this, 250L)
+                    } else {
+                        Log.d(TAG, "Unity load timed out, falling back to AdMob")
+                        showAdmobInterstitial(activity, force = force, onDismissed = onDismissed)
+                    }
+                }
+            }
+            handler.postDelayed(checkRunnable, 250L)
+            return
+        }
+
+        // 3. البديل: استخدام AdMob
+        Log.d(TAG, "Unity not available, using AdMob fallback")
         showAdmobInterstitial(activity, force = force, onDismissed = onDismissed)
+    }
+
+    private fun showUnityInterstitial(activity: Activity, onDismissed: () -> Unit) {
+        lastAdShowTime = System.currentTimeMillis()
+        isAdShowing = true
+        isUnityInterstitialLoaded = false
+
+        try {
+            UnityAds.show(
+                activity,
+                AdConfig.UNITY_INTERSTITIAL_ID,
+                UnityAdsShowOptions(),
+                object : IUnityAdsShowListener {
+                    override fun onUnityAdsShowStart(placementId: String) {
+                        Log.d(TAG, "Unity Interstitial started showing")
+                        isAdShowing = true
+                    }
+
+                    override fun onUnityAdsShowClick(placementId: String) {
+                        Log.d(TAG, "Unity Interstitial clicked")
+                    }
+
+                    override fun onUnityAdsShowComplete(
+                        placementId: String,
+                        state: UnityAds.UnityAdsShowCompletionState
+                    ) {
+                        Log.d(TAG, "Unity Interstitial completed: $state")
+                        isAdShowing = false
+                        loadInterstitial(activity)
+                        onDismissed()
+                    }
+
+                    override fun onUnityAdsShowFailure(
+                        placementId: String,
+                        error: UnityAds.UnityAdsShowError,
+                        message: String
+                    ) {
+                        Log.e(TAG, "Unity Interstitial show failed: $error - $message")
+                        isAdShowing = false
+                        showAdmobInterstitial(activity, force = true, onDismissed = onDismissed)
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            isAdShowing = false
+            Log.e(TAG, "Unity show exception", e)
+            showAdmobInterstitial(activity, force = true, onDismissed = onDismissed)
+        }
     }
 
     private fun showAdmobInterstitial(activity: Activity, force: Boolean, onDismissed: () -> Unit) {

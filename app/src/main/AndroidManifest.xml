@@ -29,6 +29,8 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Required by Unity Ads and modern ad networks to serve targeted ads on Android 13+ -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <!-- Package Visibility Queries for Direct Sharing (Android 11+) -->
     <queries>
