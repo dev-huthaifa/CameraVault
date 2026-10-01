@@ -4,10 +4,15 @@ import android.app.AlertDialog
 import android.app.ProgressDialog
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
@@ -41,6 +46,27 @@ class VaultActivity : AppCompatActivity() {
 
     private var currentCategory = VaultCategory.ALL
     private var isPickingMedia = false
+
+    // System Delete Request for Android 11+ (Permanently deletes files from MediaStore & Trash)
+    private val deleteRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            Toast.makeText(this, "تم الحذف النهائي للصور من المعرض وسلة المهملات بنجاح!", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "تم حفظ الملفات وتشفيرها في الخزنة", Toast.LENGTH_SHORT).show()
+        }
+        loadItems()
+    }
+
+    // Permission launcher for Manage All Files Access (Android 11+)
+    private val manageStorageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            Toast.makeText(this, "تم تفعيل إذن النقل والحذف الفوري التلقائي!", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Pick Photos from Gallery
     private val pickPhotosLauncher = registerForActivityResult(
@@ -250,6 +276,36 @@ class VaultActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkStoragePermissionBeforePicker(onReady: () -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            AlertDialog.Builder(this)
+                .setTitle("صلاحية النقل والحذف التلقائي")
+                .setMessage("لحذف الصور والفيديوهات تلقائياً ونهائياً من المعرض وسلة المهملات فور نقلها للخزنة وبدون الحاجة لتأكيد الحذف في كل مرة، يرجى تفعيل إذن (الوصول لجميع الملفات).")
+                .setPositiveButton("تفعيل الإذن") { _, _ ->
+                    isPickingMedia = true
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        manageStorageLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                            manageStorageLauncher.launch(intent)
+                        } catch (_: Exception) {
+                            onReady()
+                        }
+                    }
+                }
+                .setNegativeButton("متابعة بدون إذن") { _, _ ->
+                    onReady()
+                }
+                .show()
+        } else {
+            onReady()
+        }
+    }
+
     private fun showAddOptionsDialog() {
         val dialog = BottomSheetDialog(this)
         val dialogBinding = DialogAddOptionsBinding.inflate(layoutInflater)
@@ -258,36 +314,42 @@ class VaultActivity : AppCompatActivity() {
         // Option 1: Import Photos from Gallery
         dialogBinding.optImportPhotos.setOnClickListener {
             dialog.dismiss()
-            try {
-                isPickingMedia = true
-                pickPhotosLauncher.launch("image/*")
-            } catch (e: Exception) {
-                isPickingMedia = false
-                Toast.makeText(this, "تعذر فتح معرض الصور: ${e.message}", Toast.LENGTH_SHORT).show()
+            checkStoragePermissionBeforePicker {
+                try {
+                    isPickingMedia = true
+                    pickPhotosLauncher.launch("image/*")
+                } catch (e: Exception) {
+                    isPickingMedia = false
+                    Toast.makeText(this, "تعذر فتح معرض الصور: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
         // Option 2: Import Videos from Gallery
         dialogBinding.optImportVideos.setOnClickListener {
             dialog.dismiss()
-            try {
-                isPickingMedia = true
-                pickVideosLauncher.launch("video/*")
-            } catch (e: Exception) {
-                isPickingMedia = false
-                Toast.makeText(this, "تعذر فتح استديو الفيديو: ${e.message}", Toast.LENGTH_SHORT).show()
+            checkStoragePermissionBeforePicker {
+                try {
+                    isPickingMedia = true
+                    pickVideosLauncher.launch("video/*")
+                } catch (e: Exception) {
+                    isPickingMedia = false
+                    Toast.makeText(this, "تعذر فتح استديو الفيديو: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
         // Option 3: Import Documents & Files
         dialogBinding.optImportFiles.setOnClickListener {
             dialog.dismiss()
-            try {
-                isPickingMedia = true
-                pickFilesLauncher.launch(arrayOf("*/*"))
-            } catch (e: Exception) {
-                isPickingMedia = false
-                Toast.makeText(this, "تعذر فتح مدير الملفات: ${e.message}", Toast.LENGTH_SHORT).show()
+            checkStoragePermissionBeforePicker {
+                try {
+                    isPickingMedia = true
+                    pickFilesLauncher.launch(arrayOf("*/*"))
+                } catch (e: Exception) {
+                    isPickingMedia = false
+                    Toast.makeText(this, "تعذر فتح مدير الملفات: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -318,7 +380,7 @@ class VaultActivity : AppCompatActivity() {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            val count = repository.importBatch(uris) { current, total ->
+            val result = repository.importBatch(uris) { current, total ->
                 withContext(Dispatchers.Main) {
                     progressDialog.progress = current
                     progressDialog.setMessage("جاري تشفير وإخفاء الملف ($current من $total)...")
@@ -327,13 +389,30 @@ class VaultActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 try { progressDialog.dismiss() } catch (_: Exception) {}
-                Toast.makeText(
-                    this@VaultActivity,
-                    "تم بنجاح تشفير وحفظ $count ملفات واختفاؤها نهائياً من المعرض وسلة المهملات!",
-                    Toast.LENGTH_LONG
-                ).show()
                 loadItems()
                 AdManager.showInterstitial(this@VaultActivity, force = false)
+
+                // If Scoped Storage requires system consent dialog to permanently delete from Gallery & Trash
+                if (result.pendingDeleteUris.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        val pendingIntent = MediaStore.createDeleteRequest(contentResolver, result.pendingDeleteUris)
+                        val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                        deleteRequestLauncher.launch(intentSenderRequest)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(
+                            this@VaultActivity,
+                            "تم بنجاح تشفير وحفظ ${result.successCount} ملفات في الخزنة!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    Toast.makeText(
+                        this@VaultActivity,
+                        "تم بنجاح تشفير وحفظ ${result.successCount} ملفات واختفاؤها نهائياً من المعرض وسلة المهملات!",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }

@@ -5,4 +5,4 @@ set GRADLE_USER_HOME=C:\Users\E439~1\.gradle
 cd /d S:\SecretVault
 
 "%JAVA_HOME%\bin\java.exe" -Duser.home=C:\Users\E439~1 -Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew -classpath "C:\Users\E439~1\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\gradle-launcher-8.9.jar" org.gradle.launcher.GradleMain --stop
-"%JAVA_HOME%\bin\java.exe" -Duser.home=C:\Users\E439~1 -Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew -classpath "C:\Users\E439~1\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\gradle-launcher-8.9.jar" org.gradle.launcher.GradleMain assembleRelease bundleRelease
+"%JAVA_HOME%\bin\java.exe" -Duser.home=C:\Users\E439~1 -Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew -classpath "C:\Users\E439~1\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\gradle-launcher-8.9.jar" org.gradle.launcher.GradleMain assembleRelease
