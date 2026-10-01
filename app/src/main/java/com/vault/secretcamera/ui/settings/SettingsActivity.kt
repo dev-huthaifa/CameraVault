@@ -3,15 +3,19 @@ package com.vault.secretcamera.ui.settings
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.text.InputType
+import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.vault.secretcamera.R
 import com.vault.secretcamera.SecretVaultApp
-import com.vault.secretcamera.ads.AdConfig
 import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.databinding.ActivitySettingsBinding
 import com.vault.secretcamera.security.SecurityPreferences
@@ -20,6 +24,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var securityPrefs: SecurityPreferences
+    private var isLaunchingPermission = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,18 +50,22 @@ class SettingsActivity : AppCompatActivity() {
         setupPinDialogs()
         setupGestureSettings()
         setupDeveloperSettings()
+        updateManageFilesPermissionUI()
     }
 
     override fun onResume() {
         super.onResume()
         if (!securityPrefs.isUnlocked()) {
             finish()
+            return
         }
+        isLaunchingPermission = false
+        updateManageFilesPermissionUI()
     }
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations && !AdManager.isAdShowing) {
+        if (!isLaunchingPermission && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }
@@ -67,6 +76,42 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.settingsToolbar.setNavigationOnClickListener {
             finish()
+        }
+    }
+
+    private fun updateManageFilesPermissionUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val isGranted = Environment.isExternalStorageManager()
+            if (isGranted) {
+                binding.tvManageFilesStatus.text = "مفعل: يتم حذف الصور تلقائياً وفورياً من المعرض وسلة المهملات"
+                binding.tvManageFilesStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_green))
+                binding.badgeManageFiles.text = "نشط ومفعل ✓"
+                binding.badgeManageFiles.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_green))
+            } else {
+                binding.tvManageFilesStatus.text = "انقر هنا لمنح الإذن من إعدادات النظام للحذف الفوري بدون تأكيد"
+                binding.tvManageFilesStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+                binding.badgeManageFiles.text = "تفعيل"
+                binding.badgeManageFiles.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
+            }
+
+            binding.rowManageAllFiles.setOnClickListener {
+                isLaunchingPermission = true
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    } catch (_: Exception) {
+                        isLaunchingPermission = false
+                        Toast.makeText(this, "تعذر فتح إعدادات النظام", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        } else {
+            binding.rowManageAllFiles.visibility = View.GONE
         }
     }
 
@@ -214,7 +259,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupDeveloperSettings() {
-
         // Direct Email
         binding.rowDeveloperEmail.setOnClickListener {
             val email = "eng.huthaifa.aref.1611@gmail.com"

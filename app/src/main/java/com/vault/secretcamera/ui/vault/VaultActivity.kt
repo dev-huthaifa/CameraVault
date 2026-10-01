@@ -491,10 +491,16 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
                             Toast.LENGTH_LONG
                         ).show()
                     }
+                } else if (result.directlyDeletedCount > 0) {
+                    Toast.makeText(
+                        this@VaultActivity,
+                        "تم بنجاح تشفير وحفظ ${result.successCount} ملفات وحذفها نهائياً من المعرض وسلة المهملات!",
+                        Toast.LENGTH_LONG
+                    ).show()
                 } else {
                     Toast.makeText(
                         this@VaultActivity,
-                        "تم بنجاح تشفير وحفظ ${result.successCount} ملفات واختفاؤها نهائياً من المعرض وسلة المهملات!",
+                        "تم تشفير وحفظ ${result.successCount} ملفات في الخزنة بنجاح!",
                         Toast.LENGTH_LONG
                     ).show()
                 }

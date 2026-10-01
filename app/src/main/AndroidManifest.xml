@@ -56,6 +56,7 @@
         android:label="@string/app_store_name"
         android:roundIcon="@drawable/ic_camera_launcher"
         android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.SecretCamera"
         tools:targetApi="34">
 
