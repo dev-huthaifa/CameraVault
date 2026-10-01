@@ -82,6 +82,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-ads:23.0.0")
     implementation("com.google.guava:guava:33.2.1-android")
 
+    // AppLovin MAX Monetization (High-Paying Mediation Network)
+    implementation("com.applovin:applovin-sdk:13.1.0")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
