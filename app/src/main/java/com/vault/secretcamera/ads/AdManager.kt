@@ -5,15 +5,6 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import com.applovin.mediation.MaxAd
-import com.applovin.mediation.MaxAdListener
-import com.applovin.mediation.MaxAdViewAdListener
-import com.applovin.mediation.MaxError
-import com.applovin.mediation.ads.MaxAdView
-import com.applovin.mediation.ads.MaxInterstitialAd
-import com.applovin.sdk.AppLovinMediationProvider
-import com.applovin.sdk.AppLovinSdk
-import com.applovin.sdk.AppLovinSdkInitializationConfiguration
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdRequest
@@ -24,6 +15,14 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.unity3d.ads.IUnityAdsInitializationListener
+import com.unity3d.ads.IUnityAdsLoadListener
+import com.unity3d.ads.IUnityAdsShowListener
+import com.unity3d.ads.UnityAds
+import com.unity3d.ads.UnityAdsShowOptions
+import com.unity3d.services.banners.BannerErrorInfo
+import com.unity3d.services.banners.BannerView
+import com.unity3d.services.banners.UnityBannerSize
 
 object AdManager {
 
@@ -32,15 +31,15 @@ object AdManager {
     // 45 seconds grace period on first launch ever after installation
     private const val FIRST_SESSION_GRACE_PERIOD_MS = 45_000L
 
-    // Google AdMob state
+    // Unity Ads state (Primary high-eCPM network)
+    private var isUnityInitialized: Boolean = false
+    private var isUnityInterstitialLoaded: Boolean = false
+    private var isUnityInterstitialLoading: Boolean = false
+
+    // Google AdMob state (Fallback network)
     private var admobInterstitialAd: InterstitialAd? = null
     private var isAdmobInterstitialLoading: Boolean = false
     private var isAdmobInitialized: Boolean = false
-
-    // AppLovin MAX state (Highest-paying mediation network)
-    private var maxInterstitialAd: MaxInterstitialAd? = null
-    private var isMaxInitialized: Boolean = false
-    private var isMaxInterstitialLoading: Boolean = false
 
     private var lastAdShowTime: Long = 0L
 
@@ -48,27 +47,40 @@ object AdManager {
         private set
 
     fun init(context: Context) {
-        // 1. Initialize Google AdMob
-        if (!isAdmobInitialized) {
+        val appContext = context.applicationContext
+
+        // 1. Initialize Unity Ads (Primary Network)
+        if (AdConfig.isUnityAdsConfigured() && !isUnityInitialized) {
             try {
-                MobileAds.initialize(context) {
-                    isAdmobInitialized = true
-                    loadInterstitial(context)
-                }
+                UnityAds.initialize(
+                    appContext,
+                    AdConfig.UNITY_GAME_ID,
+                    AdConfig.UNITY_TEST_MODE,
+                    object : IUnityAdsInitializationListener {
+                        override fun onInitializationComplete() {
+                            isUnityInitialized = true
+                            loadInterstitial(appContext)
+                        }
+
+                        override fun onInitializationFailed(
+                            error: UnityAds.UnityAdsInitializationError,
+                            message: String
+                        ) {
+                            isUnityInitialized = false
+                        }
+                    }
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
-        // 2. Initialize AppLovin MAX (if SDK key provided)
-        if (AdConfig.isAppLovinConfigured() && !isMaxInitialized) {
+        // 2. Initialize Google AdMob (Reliable Fallback)
+        if (!isAdmobInitialized) {
             try {
-                val initConfig = AppLovinSdkInitializationConfiguration.builder(AdConfig.APPLOVIN_SDK_KEY, context)
-                    .setMediationProvider(AppLovinMediationProvider.MAX)
-                    .build()
-                AppLovinSdk.getInstance(context).initialize(initConfig) {
-                    isMaxInitialized = true
-                    loadInterstitial(context)
+                MobileAds.initialize(appContext) {
+                    isAdmobInitialized = true
+                    loadInterstitial(appContext)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -92,48 +104,56 @@ object AdManager {
 
     /**
      * تحميل وعرض إعلان شريطي (Banner Ad) أسفل الشاشة
-     * الأولوية لـ AppLovin MAX (الأعلى عائداً)، والبديل هو AdMob
+     * الأولوية لـ Unity Ads (الأعلى عائداً في اليمن والعالم)، والبديل الفوري هو AdMob
      */
     fun loadBanner(activity: Activity, container: ViewGroup) {
         if (!AdConfig.isAdsEnabled) return
 
-        // 1. إذا كان AppLovin مفعلاً، حمله أولاً كخيار رئيسي عالي الأرباح
-        if (AdConfig.isAppLovinConfigured() && AdConfig.APPLOVIN_BANNER_ID.isNotBlank()) {
+        // 1. تجربة تحميل بنر Unity Ads أولاً
+        if (AdConfig.isUnityAdsConfigured() && AdConfig.UNITY_BANNER_ID.isNotBlank()) {
             try {
                 container.removeAllViews()
-                val maxBanner = MaxAdView(AdConfig.APPLOVIN_BANNER_ID, activity)
-                val width = ViewGroup.LayoutParams.MATCH_PARENT
-                val heightPx = (50 * activity.resources.displayMetrics.density).toInt()
-                maxBanner.layoutParams = FrameLayout.LayoutParams(width, heightPx)
+                val bannerView = BannerView(
+                    activity,
+                    AdConfig.UNITY_BANNER_ID,
+                    UnityBannerSize(320, 50)
+                )
 
-                maxBanner.setListener(object : MaxAdViewAdListener {
-                    override fun onAdLoaded(ad: MaxAd) {
+                bannerView.listener = object : BannerView.IListener {
+                    override fun onBannerLoaded(bannerAdView: BannerView?) {
                         container.visibility = View.VISIBLE
                     }
-                    override fun onAdDisplayed(ad: MaxAd) {}
-                    override fun onAdHidden(ad: MaxAd) {}
-                    override fun onAdClicked(ad: MaxAd) {}
-                    override fun onAdLoadFailed(adUnitId: String, error: MaxError) {
-                        // Fallback to AdMob
-                        loadAdmobBanner(activity, container)
-                    }
-                    override fun onAdDisplayFailed(ad: MaxAd, error: MaxError) {
-                        loadAdmobBanner(activity, container)
-                    }
-                    override fun onAdExpanded(ad: MaxAd) {}
-                    override fun onAdCollapsed(ad: MaxAd) {}
-                })
 
-                container.addView(maxBanner)
+                    override fun onBannerShown(bannerAdView: BannerView?) {
+                        container.visibility = View.VISIBLE
+                    }
+
+                    override fun onBannerFailedToLoad(
+                        bannerAdView: BannerView?,
+                        errorInfo: BannerErrorInfo?
+                    ) {
+                        // في حال فشل تحميل Unity ننتقل فوراً إلى AdMob كبديل احتياطي
+                        loadAdmobBanner(activity, container)
+                    }
+
+                    override fun onBannerClick(bannerAdView: BannerView?) {}
+                    override fun onBannerLeftApplication(bannerAdView: BannerView?) {}
+                }
+
+                val width = ViewGroup.LayoutParams.MATCH_PARENT
+                val heightPx = (50 * activity.resources.displayMetrics.density).toInt()
+                bannerView.layoutParams = FrameLayout.LayoutParams(width, heightPx)
+
+                container.addView(bannerView)
                 container.visibility = View.VISIBLE
-                maxBanner.loadAd()
+                bannerView.load()
                 return
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
-        // 2. إذا لم يكن AppLovin مفعلاً أو فشل، نحمل AdMob فوراً
+        // 2. إذا لم يكن Unity متوفراً أو فشل، نحمل AdMob فوراً
         loadAdmobBanner(activity, container)
     }
 
@@ -174,23 +194,42 @@ object AdManager {
     }
 
     /**
-     * تحميل مسبق للإعلانات البينية (AppLovin MAX + AdMob)
+     * تحميل مسبق للإعلانات البينية (Unity Ads + AdMob)
      */
     fun loadInterstitial(context: Context) {
         if (!AdConfig.isAdsEnabled) return
 
-        // 1. Load AppLovin MAX Interstitial if configured
-        if (AdConfig.isAppLovinConfigured() && AdConfig.APPLOVIN_INTERSTITIAL_ID.isNotBlank() && context is Activity) {
-            if (maxInterstitialAd == null) {
-                maxInterstitialAd = MaxInterstitialAd(AdConfig.APPLOVIN_INTERSTITIAL_ID, context)
-            }
-            if (!isMaxInterstitialLoading && maxInterstitialAd?.isReady == false) {
-                isMaxInterstitialLoading = true
-                maxInterstitialAd?.loadAd()
+        // 1. تحميل إعلان Unity البيني
+        if (AdConfig.isUnityAdsConfigured() && AdConfig.UNITY_INTERSTITIAL_ID.isNotBlank()) {
+            if (!isUnityInterstitialLoaded && !isUnityInterstitialLoading) {
+                isUnityInterstitialLoading = true
+                try {
+                    UnityAds.load(
+                        AdConfig.UNITY_INTERSTITIAL_ID,
+                        object : IUnityAdsLoadListener {
+                            override fun onUnityAdsAdLoaded(placementId: String) {
+                                isUnityInterstitialLoaded = true
+                                isUnityInterstitialLoading = false
+                            }
+
+                            override fun onUnityAdsFailedToLoad(
+                                placementId: String,
+                                error: UnityAds.UnityAdsLoadError,
+                                message: String
+                            ) {
+                                isUnityInterstitialLoaded = false
+                                isUnityInterstitialLoading = false
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    isUnityInterstitialLoading = false
+                    e.printStackTrace()
+                }
             }
         }
 
-        // 2. Load Google AdMob Interstitial (always keep loaded as fallback)
+        // 2. تحميل إعلان Google AdMob الاحتياطي لضمان توفر إعلان دائماً
         if (admobInterstitialAd == null && !isAdmobInterstitialLoading) {
             isAdmobInterstitialLoading = true
             val adRequest = AdRequest.Builder().build()
@@ -228,7 +267,9 @@ object AdManager {
     }
 
     /**
-     * عرض الإعلان البيني: الأولوية لـ AppLovin MAX (الأعلى عائداً)، والبديل هو AdMob
+     * عرض الإعلان البيني:
+     * 1. الأولوية لـ Unity Ads (الأعلى عائداً في اليمن والشرق الأوسط)
+     * 2. البديل الفوري التلقائي هو Google AdMob لضمان عدم ضياع أي ظهور
      */
     fun showInterstitial(activity: Activity, force: Boolean = false, onDismissed: () -> Unit = {}) {
         if (!AdConfig.isAdsEnabled || isGracePeriodActive(activity)) {
@@ -242,30 +283,49 @@ object AdManager {
             return
         }
 
-        // خيار 1: إعلان AppLovin MAX جاهز
-        val maxAd = maxInterstitialAd
-        if (maxAd != null && maxAd.isReady) {
+        // خيار 1: إعلان Unity Ads جاهز
+        if (isUnityInterstitialLoaded && AdConfig.isUnityAdsConfigured()) {
             lastAdShowTime = now
             isAdShowing = true
-            maxAd.setListener(object : MaxAdListener {
-                override fun onAdLoaded(ad: MaxAd) {}
-                override fun onAdDisplayed(ad: MaxAd) { isAdShowing = true }
-                override fun onAdHidden(ad: MaxAd) {
-                    isAdShowing = false
-                    loadInterstitial(activity)
-                    onDismissed()
-                }
-                override fun onAdClicked(ad: MaxAd) {}
-                override fun onAdLoadFailed(adUnitId: String, error: MaxError) {
-                    isMaxInterstitialLoading = false
-                }
-                override fun onAdDisplayFailed(ad: MaxAd, error: MaxError) {
-                    isAdShowing = false
-                    showAdmobInterstitial(activity, force = true, onDismissed = onDismissed)
-                }
-            })
-            maxAd.showAd(activity)
-            return
+            isUnityInterstitialLoaded = false
+
+            try {
+                UnityAds.show(
+                    activity,
+                    AdConfig.UNITY_INTERSTITIAL_ID,
+                    UnityAdsShowOptions(),
+                    object : IUnityAdsShowListener {
+                        override fun onUnityAdsShowStart(placementId: String) {
+                            isAdShowing = true
+                        }
+
+                        override fun onUnityAdsShowClick(placementId: String) {}
+
+                        override fun onUnityAdsShowComplete(
+                            placementId: String,
+                            state: UnityAds.UnityAdsShowCompletionState
+                        ) {
+                            isAdShowing = false
+                            loadInterstitial(activity)
+                            onDismissed()
+                        }
+
+                        override fun onUnityAdsShowFailure(
+                            placementId: String,
+                            error: UnityAds.UnityAdsShowError,
+                            message: String
+                        ) {
+                            isAdShowing = false
+                            // في حال الفشل أثناء العرض، نعرض AdMob كبديل مباشر
+                            showAdmobInterstitial(activity, force = true, onDismissed = onDismissed)
+                        }
+                    }
+                )
+                return
+            } catch (e: Exception) {
+                isAdShowing = false
+                e.printStackTrace()
+            }
         }
 
         // خيار 2: استخدام Google AdMob كبديل فوري

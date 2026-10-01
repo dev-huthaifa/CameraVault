@@ -12,25 +12,27 @@ object AdConfig {
     const val isAdsEnabled: Boolean = true
 
     // =========================================================================
-    // 1. إعدادات شبكة AppLovin MAX (الأعلى ربحاً في الشرق الأوسط ومناطق Tier 3)
+    // 1. إعدادات شبكة Unity Ads الرسمية (أرباح عالية ومباشرة لليمن والعالم)
     // =========================================================================
-    // مفتاح SDK Key من لوحة تحكم AppLovin: (Account -> Keys -> SDK Key)
-    // الصق مفتاحك هنا لتبدأ أرباح AppLovin فوراً:
+    const val UNITY_GAME_ID = "800386074"
+    const val UNITY_ORGANIZATION_ID = "18968513356872"
+    const val UNITY_INTERSTITIAL_ID = "BP_Interstitial_Android"
+    const val UNITY_BANNER_ID = "BP_Banner_Android"
+    const val UNITY_TEST_MODE = false // نمط حقيقي لتحقيق الأرباح المباشرة
+
+    fun isUnityAdsConfigured(): Boolean = UNITY_GAME_ID.isNotBlank()
+
+    // =========================================================================
+    // 2. إعدادات شبكة AppLovin MAX
+    // =========================================================================
     const val APPLOVIN_SDK_KEY = ""
-
-    // معرّف إعلان البنر الشريطي من AppLovin (Max Ad Unit - Banner)
     const val APPLOVIN_BANNER_ID = ""
-
-    // معرّف إعلان ملء الشاشة البيني من AppLovin (Max Ad Unit - Interstitial)
     const val APPLOVIN_INTERSTITIAL_ID = ""
 
-    /**
-     * هل تم إدخال مفتاح AppLovin؟ إذا نعم يتم تفعيلها كالشبكة الأساسية فوراً
-     */
     fun isAppLovinConfigured(): Boolean = APPLOVIN_SDK_KEY.isNotBlank()
 
     // =========================================================================
-    // 2. إعدادات Google AdMob المعتمدة (الحالية وتعمل كـ Fallback احتياطي)
+    // 3. إعدادات Google AdMob المعتمدة (تعمل كـ Fallback احتياطي لضمان عدم ضياع أي ظهور)
     // =========================================================================
     const val APP_ID = "ca-app-pub-7678260783182264~4580415355"
     const val BANNER_ID = "ca-app-pub-7678260783182264/7647319984"
