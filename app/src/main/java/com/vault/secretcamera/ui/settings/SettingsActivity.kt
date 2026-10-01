@@ -56,7 +56,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations) {
+        if (!isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }

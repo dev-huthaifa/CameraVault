@@ -43,6 +43,8 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
+    private var proximitySensor: Sensor? = null
+    private var isProximityNear = false
     private var lastFlipTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +79,7 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
 
         setupToolbar()
         setupActions()
@@ -225,21 +228,28 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     private fun shareCurrentItem() {
         val item = currentItem ?: return
-        isSharing = true
-        SecureShareHelper.showShareDialog(this, repository, listOf(item))
+        SecureShareHelper.showShareDialog(this, repository, listOf(item)) {
+            isSharing = true
+        }
     }
 
-    // Flip to Lock (Emergency Face Down)
+    // Flip to Lock (Dual Sensor: Accelerometer + Proximity)
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
-        if (!securityPrefs.isFlipToLockEnabled) return
+        if (event == null || !securityPrefs.isFlipToLockEnabled) return
 
-        val z = event.values[2]
-        if (z < -7.0f) {
-            val now = System.currentTimeMillis()
-            if (now - lastFlipTime > 1500L) {
-                lastFlipTime = now
-                triggerEmergencyLock()
+        if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
+            val maxRange = event.sensor.maximumRange
+            val distance = event.values[0]
+            isProximityNear = distance < 4.0f && distance < maxRange
+        } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            val z = event.values[2]
+            val isFlipped = (z < -5.0f && isProximityNear) || (z < -8.5f)
+            if (isFlipped) {
+                val now = System.currentTimeMillis()
+                if (now - lastFlipTime > 1500L) {
+                    lastFlipTime = now
+                    triggerEmergencyLock()
+                }
             }
         }
     }
@@ -272,6 +282,9 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
             accelerometer?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
             }
+            proximitySensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
         }
     }
 
@@ -282,7 +295,7 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onStop() {
         super.onStop()
-        if (!isSharing && !isChangingConfigurations) {
+        if (!isSharing && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }

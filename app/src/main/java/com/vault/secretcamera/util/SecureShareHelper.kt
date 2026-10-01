@@ -26,7 +26,8 @@ object SecureShareHelper {
     fun showShareDialog(
         activity: AppCompatActivity,
         repository: VaultRepository,
-        items: List<VaultItem>
+        items: List<VaultItem>,
+        onShareLaunched: () -> Unit = {}
     ) {
         if (items.isEmpty()) return
 
@@ -44,24 +45,28 @@ object SecureShareHelper {
         // 1. WhatsApp
         binding.optShareWhatsApp.setOnClickListener {
             dialog.dismiss()
+            onShareLaunched()
             executeShare(activity, repository, items, TargetApp.WHATSAPP)
         }
 
         // 2. Instagram
         binding.optShareInstagram.setOnClickListener {
             dialog.dismiss()
+            onShareLaunched()
             executeShare(activity, repository, items, TargetApp.INSTAGRAM)
         }
 
         // 3. Telegram
         binding.optShareTelegram.setOnClickListener {
             dialog.dismiss()
+            onShareLaunched()
             executeShare(activity, repository, items, TargetApp.TELEGRAM)
         }
 
         // 4. All Other Apps (System Chooser)
         binding.optShareAllApps.setOnClickListener {
             dialog.dismiss()
+            onShareLaunched()
             executeShare(activity, repository, items, TargetApp.ALL_APPS)
         }
 

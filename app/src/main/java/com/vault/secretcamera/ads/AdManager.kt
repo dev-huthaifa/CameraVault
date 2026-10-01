@@ -27,6 +27,9 @@ object AdManager {
     private var isInitialized: Boolean = false
     private var lastAdShowTime: Long = 0L
 
+    var isAdShowing: Boolean = false
+        private set
+
     fun init(context: Context) {
         if (isInitialized) return
         try {
@@ -154,14 +157,21 @@ object AdManager {
         val ad = interstitialAd
         if (ad != null) {
             lastAdShowTime = now
+            isAdShowing = true
             ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                override fun onAdShowedFullScreenContent() {
+                    isAdShowing = true
+                }
+
                 override fun onAdDismissedFullScreenContent() {
+                    isAdShowing = false
                     interstitialAd = null
                     loadInterstitial(activity)
                     onDismissed()
                 }
 
                 override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                    isAdShowing = false
                     interstitialAd = null
                     loadInterstitial(activity)
                     onDismissed()
@@ -169,6 +179,7 @@ object AdManager {
             }
             ad.show(activity)
         } else {
+            isAdShowing = false
             loadInterstitial(activity)
             onDismissed()
         }

@@ -6,6 +6,7 @@ import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.data.VaultRepository
 import com.vault.secretcamera.databinding.ActivityIntruderLogBinding
 import com.vault.secretcamera.security.SecurityPreferences
@@ -52,7 +53,7 @@ class IntruderLogActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations) {
+        if (!isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }

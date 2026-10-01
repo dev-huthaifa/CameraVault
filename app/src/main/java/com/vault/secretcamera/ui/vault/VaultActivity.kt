@@ -27,10 +27,10 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
 import com.vault.secretcamera.R
 import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.data.VaultRepository
 import com.vault.secretcamera.databinding.ActivityVaultBinding
 import com.vault.secretcamera.databinding.DialogAddOptionsBinding
-import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.model.VaultCategory
 import com.vault.secretcamera.model.VaultItem
 import com.vault.secretcamera.security.SecurityPreferences
@@ -57,12 +57,15 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
 
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
+    private var proximitySensor: Sensor? = null
+    private var isProximityNear = false
     private var lastFlipTime = 0L
 
     // System Delete Request for Android 11+ (Permanently deletes files from MediaStore & Trash)
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
+        isPickingMedia = false
         if (result.resultCode == RESULT_OK) {
             Toast.makeText(this, "تم الحذف النهائي للصور من المعرض وسلة المهملات بنجاح!", Toast.LENGTH_LONG).show()
         } else {
@@ -75,6 +78,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
     private val manageStorageLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
+        isPickingMedia = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
             Toast.makeText(this, "تم تفعيل إذن النقل والحذف الفوري التلقائي!", Toast.LENGTH_SHORT).show()
         }
@@ -135,6 +139,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
 
         setupToolbar()
         setupTabs()
@@ -165,6 +170,9 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             accelerometer?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
             }
+            proximitySensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
         }
     }
 
@@ -175,24 +183,35 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onStop() {
         super.onStop()
-        // Auto-lock and exit to Camera if user backgrounds the app
-        if (!isPickingMedia && !isChangingConfigurations) {
+        // Auto-lock and exit to Camera if user backgrounds the app,
+        // but guard against interstitial ads and media pickers taking foreground.
+        if (!isPickingMedia && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }
     }
 
-    // Flip to Lock (Emergency Face Down Sensor Trigger)
+    // Flip to Lock (Dual Sensor: Accelerometer + Proximity)
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
-        if (!securityPrefs.isFlipToLockEnabled) return
+        if (event == null || !securityPrefs.isFlipToLockEnabled) return
 
-        val z = event.values[2]
-        if (z < -7.0f) {
-            val now = System.currentTimeMillis()
-            if (now - lastFlipTime > 1500L) {
-                lastFlipTime = now
-                triggerEmergencyLock()
+        if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
+            val maxRange = event.sensor.maximumRange
+            val distance = event.values[0]
+            isProximityNear = distance < 4.0f && distance < maxRange
+        } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            val z = event.values[2]
+            // True flip face down:
+            // Either phone is facing downward on a surface (z < -5.0f && isProximityNear),
+            // or phone is placed flat face-down (z < -8.5f).
+            // This prevents accidental locks when looking up at the screen in bed.
+            val isFlipped = (z < -5.0f && isProximityNear) || (z < -8.5f)
+            if (isFlipped) {
+                val now = System.currentTimeMillis()
+                if (now - lastFlipTime > 1500L) {
+                    lastFlipTime = now
+                    triggerEmergencyLock()
+                }
             }
         }
     }
@@ -304,8 +323,9 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
         binding.btnBatchShare.setOnClickListener {
             val selected = adapter.getSelectedItems()
             if (selected.isEmpty()) return@setOnClickListener
-            isPickingMedia = true
-            SecureShareHelper.showShareDialog(this, repository, selected)
+            SecureShareHelper.showShareDialog(this, repository, selected) {
+                isPickingMedia = true
+            }
         }
 
         // Batch Restore
@@ -458,10 +478,12 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
                 // If Scoped Storage requires system consent dialog to permanently delete from Gallery & Trash
                 if (result.pendingDeleteUris.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
+                        isPickingMedia = true
                         val pendingIntent = MediaStore.createDeleteRequest(contentResolver, result.pendingDeleteUris)
                         val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
                         deleteRequestLauncher.launch(intentSenderRequest)
                     } catch (e: Exception) {
+                        isPickingMedia = false
                         e.printStackTrace()
                         Toast.makeText(
                             this@VaultActivity,
