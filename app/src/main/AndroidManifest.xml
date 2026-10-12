@@ -29,6 +29,16 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Second Phone & App Lock Permissions -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        tools:ignore="ForegroundServicePermission" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Required by Unity Ads and modern ad networks to serve targeted ads on Android 13+ -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
@@ -121,6 +131,54 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Second Phone Workspace Activity -->
+        <activity
+            android:name=".ui.secondphone.SecondPhoneActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- App Picker for adding apps into Second Phone -->
+        <activity
+            android:name=".ui.secondphone.AppPickerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Secret Built-in Incognito Browser -->
+        <activity
+            android:name=".ui.secondphone.SecretBrowserActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize" />
+
+        <!-- Secret Built-in Encrypted Notes -->
+        <activity
+            android:name=".ui.secondphone.SecretNotesActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- AppLock Background Monitoring Service -->
+        <service
+            android:name=".service.AppLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Second Phone app lock security shield" />
+        </service>
+
+        <!-- Native SAF DocumentsProvider: lets WhatsApp/Telegram/external apps pick encrypted media seamlessly -->
+        <provider
+            android:name=".data.VaultDocumentsProvider"
+            android:authorities="com.vault.secretcamera.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
         </provider>
 
     </application>

@@ -124,6 +124,16 @@ class VaultRepository(
         }.sortedByDescending { it.dateAdded }
     }
 
+    fun getItemById(id: String): VaultItem? {
+        return itemsList.find { it.id == id }
+    }
+
+    fun getAllItems(category: VaultCategory = VaultCategory.ALL, isDecoy: Boolean = false): List<VaultItem> {
+        return itemsList.filter { item ->
+            item.isDecoy == isDecoy && (category == VaultCategory.ALL || item.category == category)
+        }.sortedByDescending { it.dateAdded }
+    }
+
     /**
      * Instantaneous in-memory thumbnail check (0 milliseconds)
      */
@@ -847,6 +857,52 @@ class VaultRepository(
                 encryptedFileName = encFileName,
                 category = VaultCategory.PHOTOS,
                 mimeType = "image/jpeg",
+                fileSize = destEncFile.length(),
+                dateAdded = System.currentTimeMillis(),
+                isDecoy = securityPrefs.isDecoySession
+            )
+
+            itemsList.add(0, vaultItem)
+            saveIndex()
+
+            Result.success(vaultItem)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveDownloadedFile(bytes: ByteArray, fileName: String, mimeType: String): Result<VaultItem> = withContext(Dispatchers.IO) {
+        val masterKey = securityPrefs.currentMasterKey
+            ?: return@withContext Result.failure(IllegalStateException("الخزنة مقفلة"))
+
+        try {
+            val itemId = UUID.randomUUID().toString()
+            val encFileName = "$itemId.enc"
+            val destEncFile = File(itemsDir, encFileName)
+
+            ByteArrayInputStream(bytes).use { bais ->
+                CryptoManager.encryptStreamToFile(bais, destEncFile, masterKey)
+            }
+
+            val category = resolveCategory(mimeType, fileName)
+            if (category == VaultCategory.PHOTOS) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                val sample = calculateInSampleSize(bounds, 280, 280)
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val thumbBmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                if (thumbBmp != null) {
+                    thumbnailCache.put(itemId, thumbBmp)
+                    saveEncryptedThumbnail(itemId, thumbBmp, masterKey)
+                }
+            }
+
+            val vaultItem = VaultItem(
+                id = itemId,
+                originalName = fileName,
+                encryptedFileName = encFileName,
+                category = category,
+                mimeType = mimeType,
                 fileSize = destEncFile.length(),
                 dateAdded = System.currentTimeMillis(),
                 isDecoy = securityPrefs.isDecoySession

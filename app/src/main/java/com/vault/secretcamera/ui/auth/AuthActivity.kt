@@ -11,11 +11,13 @@ import android.view.WindowManager
 import android.view.animation.AnimationUtils
 import android.widget.Button
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import com.vault.secretcamera.R
 import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.data.AppVaultRepository
 import com.vault.secretcamera.databinding.ActivityAuthBinding
 import com.vault.secretcamera.security.SecurityPreferences
 import com.vault.secretcamera.ui.vault.VaultActivity
@@ -25,6 +27,10 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
 
 class AuthActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_LOCKED_PACKAGE = "extra_locked_package"
+    }
 
     private lateinit var binding: ActivityAuthBinding
     private lateinit var securityPrefs: SecurityPreferences
@@ -53,6 +59,12 @@ class AuthActivity : AppCompatActivity() {
 
         isFirstTimeSetup = !securityPrefs.isPinConfigured()
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                handleCancelOrBack()
+            }
+        })
+
         setupKeypad()
         updateUIState()
 
@@ -63,6 +75,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun updateUIState() {
+        val lockedPkg = intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
         if (isFirstTimeSetup) {
             binding.tvAuthTitle.text = getString(R.string.setup_pin_title)
             binding.tvAuthSubtitle.text = if (tempFirstPin == null) {
@@ -71,6 +84,10 @@ class AuthActivity : AppCompatActivity() {
                 getString(R.string.confirm_pin_title)
             }
             binding.btnBiometric.visibility = View.INVISIBLE
+        } else if (!lockedPkg.isNullOrBlank()) {
+            binding.tvAuthTitle.text = "درع حماية الجوال الثاني"
+            binding.tvAuthSubtitle.text = "أدخل الرمز لفتح التطبيق المحمي"
+            binding.btnBiometric.visibility = if (securityPrefs.isBiometricEnabled) View.VISIBLE else View.INVISIBLE
         } else {
             binding.tvAuthTitle.text = getString(R.string.vault_title)
             binding.tvAuthSubtitle.text = getString(R.string.enter_pin)
@@ -109,7 +126,7 @@ class AuthActivity : AppCompatActivity() {
         }
 
         binding.btnCloseAuth.setOnClickListener {
-            finish()
+            handleCancelOrBack()
         }
 
         binding.btnBiometric.setOnClickListener {
@@ -149,7 +166,7 @@ class AuthActivity : AppCompatActivity() {
             if (tempFirstPin == pin) {
                 securityPrefs.setMasterPin(pin)
                 Toast.makeText(this, "تم تعيين الرمز السري بنجاح!", Toast.LENGTH_SHORT).show()
-                openVault()
+                onAuthSuccess()
             } else {
                 tempFirstPin = null
                 enteredPin.clear()
@@ -164,13 +181,13 @@ class AuthActivity : AppCompatActivity() {
 
         // 1. Check Master PIN
         if (securityPrefs.verifyMasterPin(normPin)) {
-            openVault()
+            onAuthSuccess()
             return
         }
 
         // 2. Check Decoy PIN (Completely silent and seamless, no toast or hint)
         if (securityPrefs.hasDecoyPin() && securityPrefs.verifyDecoyPin(normPin)) {
-            openVault()
+            onAuthSuccess()
             return
         }
 
@@ -195,9 +212,27 @@ class AuthActivity : AppCompatActivity() {
         }
     }
 
-    private fun openVault() {
+    private fun onAuthSuccess() {
+        val lockedPackage = intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
+        if (!lockedPackage.isNullOrBlank()) {
+            AppVaultRepository.grantTemporaryAccess(lockedPackage)
+            finish()
+            return
+        }
         val intent = Intent(this, VaultActivity::class.java)
         startActivity(intent)
+        finish()
+    }
+
+    private fun handleCancelOrBack() {
+        val lockedPackage = intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
+        if (!lockedPackage.isNullOrBlank()) {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(homeIntent)
+        }
         finish()
     }
 
@@ -253,7 +288,7 @@ class AuthActivity : AppCompatActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    openVault()
+                    onAuthSuccess()
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {

@@ -36,6 +36,7 @@ import com.vault.secretcamera.model.VaultItem
 import com.vault.secretcamera.security.SecurityPreferences
 import com.vault.secretcamera.ui.camera.CameraActivity
 import com.vault.secretcamera.ui.intruder.IntruderLogActivity
+import com.vault.secretcamera.ui.secondphone.SecondPhoneActivity
 import com.vault.secretcamera.ui.settings.SettingsActivity
 import com.vault.secretcamera.ui.viewer.MediaViewerActivity
 import com.vault.secretcamera.util.SecureShareHelper
@@ -254,6 +255,12 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
         binding.btnIntruders.setOnClickListener {
             isPickingMedia = true
             startActivity(Intent(this, IntruderLogActivity::class.java))
+        }
+
+        // Second Phone Workspace
+        binding.btnSecondPhone.setOnClickListener {
+            isPickingMedia = true
+            startActivity(Intent(this, SecondPhoneActivity::class.java))
         }
     }
 
