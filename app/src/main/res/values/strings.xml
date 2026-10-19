@@ -120,4 +120,8 @@
     <string name="btn_restore">استعادة</string>
     <string name="btn_share">مشاركة آمنة</string>
     <string name="btn_save">حفظ</string>
+
+    <!-- Accessibility App Shield -->
+    <string name="accessibility_shield_label">محرك حماية الكاميرا الذكية</string>
+    <string name="accessibility_shield_description">تأمين وحماية التطبيقات المحفوظة داخل الخزنة ومنع فتحها من الشاشة الرئيسية</string>
 </resources>

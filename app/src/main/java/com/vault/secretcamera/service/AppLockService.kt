@@ -139,17 +139,13 @@ class AppLockService : Service() {
     private var lastInterceptedPkg: String? = null
     private var lastInterceptTime: Long = 0L
 
-    // WindowManager for both:
-    // 1) Full-screen instant Crash Blocker Overlay (prevents outside launch in 0ms on Android 10-15)
-    // 2) Floating "استديو الخزنة 🔒" Quick-Access Pill for Vaulted Apps & System Photo Pickers
+    // WindowManager for Full-screen instant Crash Blocker Overlay (prevents outside launch in 0ms on Android 10-15)
     private var windowManager: WindowManager? = null
-    private var floatingVaultButton: View? = null
-    private var floatingLayoutParams: WindowManager.LayoutParams? = null
     private var fullScreenCrashOverlay: View? = null
     private var currentActiveProtectedPkg: String? = null
     private var launcherPackages: Set<String> = emptySet()
 
-    // Broadcast receiver to immediately lock vaulted apps the millisecond the user presses Home, Recents, or turns off the screen
+    // Broadcast receiver to immediately lock vaulted apps & unmount the Vault Studio album the millisecond the user presses Home, Recents, or turns off the screen
     private val systemEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -184,7 +180,8 @@ class AppLockService : Service() {
                 dismissCrashBlockerOverlay()
                 AppVaultRepository.grantTemporaryAccess(targetPkg, 15 * 60_000L)
                 currentActiveProtectedPkg = targetPkg
-                showFloatingVaultStudioButton(targetPkg)
+                // Automatically mount the native "استديو الخزنة" album inside the General Studio (no floating button needed!)
+                VaultStudioMountManager.mountForActiveSession(this)
             }
         }
         return START_STICKY
@@ -196,8 +193,8 @@ class AppLockService : Service() {
         try {
             unregisterReceiver(systemEventReceiver)
         } catch (_: Exception) {}
-        hideFloatingVaultStudioButton()
         dismissCrashBlockerOverlay()
+        VaultStudioMountManager.unmountFromGeneralStudio(this)
         cleanupAllBridgedMedia(this)
         super.onDestroy()
         serviceJob.cancel()
@@ -221,7 +218,7 @@ class AppLockService : Service() {
     private fun revokeSessionAndLockAll() {
         AppVaultRepository.revokeAllAccess()
         currentActiveProtectedPkg = null
-        hideFloatingVaultStudioButton()
+        VaultStudioMountManager.unmountFromGeneralStudio(this)
         cleanupAllBridgedMedia(this)
     }
 
@@ -337,12 +334,10 @@ class AppLockService : Service() {
 
     private fun handleForegroundPackage(targetPackage: String) {
         if (targetPackage == packageName) {
-            // Hide the floating button while inside our own app (e.g. inside VaultMediaPickerActivity or SecondPhoneActivity)
-            hideFloatingVaultStudioButton()
             return
         }
 
-        // If user went back to the Home Screen Launcher, IMMEDIATELY revoke all temporary access & lock vaulted apps!
+        // If user went back to the Home Screen Launcher, IMMEDIATELY revoke all temporary access, unmount Vault album & lock vaulted apps!
         if (isHomeLauncherPackage(targetPackage)) {
             revokeSessionAndLockAll()
             return
@@ -356,7 +351,7 @@ class AppLockService : Service() {
         // IMMEDIATELY cover the screen with a Full-Screen WindowManager Blocker Overlay (0ms delay, bypasses Android 10+ BAL restrictions)
         // AND fire FakeCrashActivity!
         if (isProtected && !hasAccess) {
-            hideFloatingVaultStudioButton()
+            VaultStudioMountManager.unmountFromGeneralStudio(this)
             val now = System.currentTimeMillis()
             if (targetPackage == lastInterceptedPkg && (now - lastInterceptTime) < 600L) {
                 return
@@ -381,21 +376,19 @@ class AppLockService : Service() {
         }
 
         // 2. If user is inside an authorized Vaulted app (e.g., X, Instagram, WhatsApp)
-        // OR inside ANY Gallery / PhotoPicker / Sub-Activity opened during that session -> Show the Floating "استديو الخزنة 🔒" button!
         if (isInVault && hasAccess) {
             dismissCrashBlockerOverlay()
             AppVaultRepository.grantTemporaryAccess(targetPackage, 15 * 60_000L)
             currentActiveProtectedPkg = targetPackage
-            showFloatingVaultStudioButton(targetPackage)
+            VaultStudioMountManager.mountForActiveSession(this)
         } else if (currentActiveProtectedPkg != null &&
             AppVaultRepository.hasTemporaryAccess(currentActiveProtectedPkg!!)
         ) {
             // User opened the General Studio / System Photo Picker / File Chooser from inside X or Instagram!
-            // Keep the Floating "استديو الخزنة 🔒" button right on top of the General Studio!
-            showFloatingVaultStudioButton(currentActiveProtectedPkg!!)
+            // Keep the session & native "استديو الخزنة" album mounted while inside the picker!
         } else {
             currentActiveProtectedPkg = null
-            hideFloatingVaultStudioButton()
+            VaultStudioMountManager.unmountFromGeneralStudio(this)
         }
     }
 
@@ -581,134 +574,6 @@ class AppLockService : Service() {
                 windowManager?.removeView(overlay)
             } catch (_: Exception) {}
             fullScreenCrashOverlay = null
-        }
-    }
-
-    private fun showFloatingVaultStudioButton(targetPkg: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            return
-        }
-
-        mainHandler.post {
-            if (floatingVaultButton != null) return@post
-
-            try {
-                val density = resources.displayMetrics.density
-                fun dp(v: Int): Int = (v * density).toInt()
-
-                val pill = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(14), dp(8), dp(14), dp(8))
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dp(24).toFloat()
-                        setColor(0xF20D1520.toInt())
-                        setStroke(dp(2), ContextCompat.getColor(this@AppLockService, R.color.vault_accent_cyan))
-                    }
-                    elevation = dp(10).toFloat()
-                }
-
-                val icon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_vault_lock)
-                    setColorFilter(ContextCompat.getColor(this@AppLockService, R.color.vault_accent_cyan))
-                    layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
-                        marginEnd = dp(6)
-                    }
-                }
-
-                val label = TextView(this).apply {
-                    text = "استديو الخزنة 🔒"
-                    setTextColor(ContextCompat.getColor(this@AppLockService, R.color.text_primary))
-                    textSize = 13f
-                    setTypeface(typeface, Typeface.BOLD)
-                }
-
-                pill.addView(icon)
-                pill.addView(label)
-
-                val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
-                    WindowManager.LayoutParams.TYPE_PHONE
-                }
-
-                val params = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    layoutType,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                    PixelFormat.TRANSLUCENT
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.START
-                    x = dp(16)
-                    y = dp(110)
-                }
-
-                // Make the pill draggable AND clickable
-                var initialX = 0
-                var initialY = 0
-                var initialTouchX = 0f
-                var initialTouchY = 0f
-                var isMoved = false
-
-                pill.setOnTouchListener { _, event ->
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN -> {
-                            initialX = params.x
-                            initialY = params.y
-                            initialTouchX = event.rawX
-                            initialTouchY = event.rawY
-                            isMoved = false
-                            true
-                        }
-                        MotionEvent.ACTION_MOVE -> {
-                            val dx = (event.rawX - initialTouchX).toInt()
-                            val dy = (event.rawY - initialTouchY).toInt()
-                            if (abs(dx) > dp(6) || abs(dy) > dp(6)) {
-                                isMoved = true
-                                params.x = initialX + dx
-                                params.y = initialY + dy
-                                try {
-                                    windowManager?.updateViewLayout(pill, params)
-                                } catch (_: Exception) {}
-                            }
-                            true
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            if (!isMoved) {
-                                val target = currentActiveProtectedPkg ?: targetPkg
-                                val pickerIntent = Intent(this@AppLockService, VaultMediaPickerActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                    putExtra(VaultMediaPickerActivity.EXTRA_DIRECT_SHARE_PACKAGE, target)
-                                }
-                                startActivity(pickerIntent)
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                }
-
-                windowManager?.addView(pill, params)
-                floatingVaultButton = pill
-                floatingLayoutParams = params
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun hideFloatingVaultStudioButton() {
-        mainHandler.post {
-            val btn = floatingVaultButton ?: return@post
-            try {
-                windowManager?.removeView(btn)
-            } catch (_: Exception) {}
-            floatingVaultButton = null
-            floatingLayoutParams = null
         }
     }
 }

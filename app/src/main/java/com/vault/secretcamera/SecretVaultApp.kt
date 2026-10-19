@@ -16,8 +16,9 @@ class SecretVaultApp : Application() {
         vaultRepository = VaultRepository(this, securityPreferences)
         com.vault.secretcamera.ads.AdManager.init(this)
 
-        // Auto-start AppLockService if Second Phone shield is enabled and permissions are granted
+        // Clean up any residual mounted studio album on startup and auto-start AppLockService
         try {
+            com.vault.secretcamera.service.VaultStudioMountManager.unmountFromGeneralStudio(this)
             val appVaultRepo = com.vault.secretcamera.data.AppVaultRepository(this)
             if (appVaultRepo.isAppLockShieldEnabled() &&
                 com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)

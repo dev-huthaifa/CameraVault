@@ -2,11 +2,20 @@ package com.vault.secretcamera.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import com.vault.secretcamera.model.AppVaultItem
 import com.vault.secretcamera.model.BuiltInAppType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 class AppVaultRepository(private val context: Context) {
@@ -18,9 +27,18 @@ class AppVaultRepository(private val context: Context) {
         File(context.filesDir, "second_phone_apps.json")
     }
 
+    private val iconsDir: File by lazy {
+        File(context.filesDir, "vault_app_icons").apply { mkdirs() }
+    }
+
+    private val apksDir: File by lazy {
+        File(context.filesDir, "vault_app_apks").apply { mkdirs() }
+    }
+
     companion object {
         private const val KEY_SHIELD_ENABLED = "key_app_shield_enabled"
         private const val KEY_FIRST_INIT_DONE = "key_second_phone_first_init"
+        private const val KEY_ISOLATED_PREFIX = "key_isolated_mode_"
 
         // Temporary granted access cache (PackageName -> Expiry timestamp in millis)
         private val temporaryAccessMap = ConcurrentHashMap<String, Long>()
@@ -118,7 +136,80 @@ class AppVaultRepository(private val context: Context) {
         }
         current.add(item)
         saveApps(current)
+        if (!item.isBuiltIn) {
+            archiveAppIconAndApkAsync(item.packageName)
+        }
         return true
+    }
+
+    /**
+     * Saves the app's icon and backs up its base APK inside the Vault's internal storage
+     * so if the user uninstalls/deletes the app from the Home Screen for 100% stealth,
+     * its icon, metadata, and APK remain preserved inside the Vault!
+     */
+    fun archiveAppIconAndApkAsync(packageName: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val pm = context.packageManager
+                val icon = pm.getApplicationIcon(packageName)
+                saveAppIcon(packageName, icon)
+
+                val appInfo = pm.getApplicationInfo(packageName, 0)
+                val sourceApk = File(appInfo.sourceDir)
+                val destApk = File(apksDir, "$packageName.apk")
+                if (sourceApk.exists() && (!destApk.exists() || destApk.length() != sourceApk.length())) {
+                    FileInputStream(sourceApk).use { input ->
+                        FileOutputStream(destApk).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun saveAppIcon(packageName: String, drawable: Drawable) {
+        try {
+            val bmp = if (drawable is BitmapDrawable && drawable.bitmap != null) {
+                drawable.bitmap
+            } else {
+                val width = drawable.intrinsicWidth.coerceAtLeast(96)
+                val height = drawable.intrinsicHeight.coerceAtLeast(96)
+                val b = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(b)
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+                b
+            }
+            val iconFile = File(iconsDir, "$packageName.png")
+            FileOutputStream(iconFile).use { out ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun getSavedAppIcon(packageName: String): Drawable? {
+        return try {
+            val iconFile = File(iconsDir, "$packageName.png")
+            if (iconFile.exists()) {
+                Drawable.createFromPath(iconFile.absolutePath)
+            } else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun getBackedUpApkFile(packageName: String): File? {
+        val f = File(apksDir, "$packageName.apk")
+        return if (f.exists() && f.length() > 0L) f else null
+    }
+
+    fun setIsolatedContainerPreferred(packageName: String, isolated: Boolean) {
+        prefs.edit().putBoolean(KEY_ISOLATED_PREFIX + packageName, isolated).apply()
+    }
+
+    fun isIsolatedContainerPreferred(packageName: String): Boolean {
+        return prefs.getBoolean(KEY_ISOLATED_PREFIX + packageName, false)
     }
 
     @Synchronized
@@ -127,6 +218,8 @@ class AppVaultRepository(private val context: Context) {
         val removed = current.removeAll { it.packageName == packageName }
         if (removed) {
             saveApps(current)
+            try { File(iconsDir, "$packageName.png").delete() } catch (_: Exception) {}
+            try { File(apksDir, "$packageName.apk").delete() } catch (_: Exception) {}
         }
         return removed
     }

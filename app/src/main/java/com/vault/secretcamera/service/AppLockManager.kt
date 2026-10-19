@@ -39,6 +39,48 @@ object AppLockManager {
         }
     }
 
+    fun hasAccessibilityShieldEnabled(context: Context): Boolean {
+        return try {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            val expectedComponent = "${context.packageName}/${VaultAccessibilityService::class.java.name}"
+            val expectedShort = "${context.packageName}/.service.VaultAccessibilityService"
+            enabledServices.contains(expectedComponent, ignoreCase = true) ||
+                    enabledServices.contains(expectedShort, ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun requestAccessibilityShieldPermission(context: Context) {
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    fun isPackageInstalledOnPhone(context: Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getApplicationInfo(packageName, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun uninstallAppFromHomeScreen(context: Context, packageName: String) {
+        try {
+            val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
     fun requestUsageStatsPermission(context: Context) {
         val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK

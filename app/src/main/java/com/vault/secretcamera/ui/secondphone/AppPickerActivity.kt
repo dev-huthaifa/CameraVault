@@ -205,6 +205,7 @@ class AppPickerActivity : AppCompatActivity() {
 
     private fun toggleAddApp(app: InstalledApp) {
         if (!app.isAdded) {
+            repository.saveAppIcon(app.packageName, app.icon)
             val item = AppVaultItem(
                 packageName = app.packageName,
                 appName = app.appName,
@@ -216,38 +217,81 @@ class AppPickerActivity : AppCompatActivity() {
             app.isAdded = true
             adapter.notifyItemChanged(filteredApps.indexOf(app))
 
-            val hasUsage = com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
-            val hasOverlay = com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)
+            val modes = arrayOf(
+                "🗑️ إخفاء وحذف نهائي من الشاشة الرئيسية (يعمل داخل الخزنة فقط 100%)",
+                "🛡️ إبقاء الأيقونة بالخارج مع حظر فتحها نهائياً برسالة خطأ فورية (0 ثانية)"
+            )
 
-            if (hasUsage && hasOverlay) {
-                com.vault.secretcamera.service.AppLockManager.startLockService(this)
-                Toast.makeText(
-                    this,
-                    "تم نقل ${app.appName} للخزنة وتفعيل زر استديو الخزنة وحظر الفتح الخارجي! 🔒",
-                    Toast.LENGTH_LONG
-                ).show()
-            } else {
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("تفعيل الحظر الصارم وزر استديو الخزنة 🔒")
-                    .setMessage("تم نقل «${app.appName}» داخل الخزنة.\nلمنعه من الفتح في الشاشة الرئيسية وإظهار زر (استديو الخزنة 🔒) فوق الاستديو العام داخل التطبيق، يرجى منح إذن (الظهور فوق التطبيقات) و(بيانات الاستخدام).")
-                    .setPositiveButton("تفعيل الآن") { _, _ ->
-                        isLaunchingPermission = true
-                        pendingSecondPermissionCheck = true
-                        if (!hasOverlay) {
-                            com.vault.secretcamera.service.AppLockManager.requestOverlayPermission(this)
-                        } else if (!hasUsage) {
-                            com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("تم نقل «${app.appName}» للخزنة 🔒 — اختر وضع الخصوصية:")
+                .setItems(modes) { _, which ->
+                    when (which) {
+                        0 -> {
+                            // Mode 1: Complete removal from Home Screen + Isolated In-Vault Engine & APK Backup
+                            repository.setIsolatedContainerPreferred(app.packageName, true)
+                            isLaunchingPermission = true
+                            Toast.makeText(
+                                this,
+                                "تم حفظ نسخة «${app.appName}» داخل الخزنة! قم بتأكيد الحذف لإخفائه من الشاشة الرئيسية نهائياً 🔒",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            com.vault.secretcamera.service.AppLockManager.uninstallAppFromHomeScreen(this, app.packageName)
+                        }
+                        1 -> {
+                            // Mode 2: Keep installed on phone but block outside launch in 0ms
+                            repository.setIsolatedContainerPreferred(app.packageName, false)
+                            ensureZeroLatencyBlockPermissions(app.appName)
                         }
                     }
-                    .setNegativeButton("لاحقاً", null)
-                    .show()
-            }
+                }
+                .setOnCancelListener {
+                    ensureZeroLatencyBlockPermissions(app.appName)
+                }
+                .show()
         } else {
             repository.removeApp(app.packageName)
             app.isAdded = false
             adapter.notifyItemChanged(filteredApps.indexOf(app))
             Toast.makeText(this, "تمت إزالة ${app.appName} من الجوال الثاني", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun ensureZeroLatencyBlockPermissions(appName: String) {
+        val hasAccessibility = com.vault.secretcamera.service.AppLockManager.hasAccessibilityShieldEnabled(this)
+        val hasUsage = com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
+        val hasOverlay = com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)
+
+        if (hasUsage || hasOverlay) {
+            com.vault.secretcamera.service.AppLockManager.startLockService(this)
+        }
+
+        if (hasAccessibility) {
+            Toast.makeText(
+                this,
+                "✅ درع الحظر الفوري (0 ثانية) نشط لـ «$appName»!",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("تفعيل محرك الحظر الفوري (0 ثانية) 🛡️")
+            .setMessage("لمنع فتح «$appName» من الشاشة الرئيسية نهائياً في جزء من الثانية وإظهار رسالة التوقف التمويهية بدون أي تأخير، يرجى تفعيل «محرك حماية الكاميرا الذكية» من خدمات إمكانية الوصول.")
+            .setPositiveButton("تفعيل الحظر الفوري الآن") { _, _ ->
+                isLaunchingPermission = true
+                com.vault.secretcamera.service.AppLockManager.requestAccessibilityShieldPermission(this)
+            }
+            .setNeutralButton("تفعيل الحظر العادي") { _, _ ->
+                isLaunchingPermission = true
+                pendingSecondPermissionCheck = true
+                if (!hasOverlay) {
+                    com.vault.secretcamera.service.AppLockManager.requestOverlayPermission(this)
+                } else if (!hasUsage) {
+                    com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
+                }
+            }
+            .setNegativeButton("لاحقاً", null)
+            .show()
     }
 
     private inner class AppPickerAdapter(

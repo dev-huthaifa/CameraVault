@@ -39,6 +39,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
         tools:ignore="ForegroundServicePermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Required by Unity Ads and modern ad networks to serve targeted ads on Android 13+ -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
@@ -156,6 +158,13 @@
             android:exported="false"
             android:configChanges="orientation|screenSize" />
 
+        <!-- Isolated In-Vault App Container (runs X, Instagram, TikTok, Telegram, etc. even after uninstalling from phone) -->
+        <activity
+            android:name=".ui.secondphone.VaultIsolatedAppActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Secret Built-in Encrypted Notes -->
         <activity
             android:name=".ui.secondphone.SecretNotesActivity"
@@ -204,6 +213,20 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Second Phone app lock security shield" />
+        </service>
+
+        <!-- Zero-Latency Accessibility App Blocker Service -->
+        <service
+            android:name=".service.VaultAccessibilityService"
+            android:label="@string/accessibility_shield_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/vault_accessibility_config" />
         </service>
 
         <!-- Native SAF DocumentsProvider: lets WhatsApp/Telegram/external apps pick encrypted media seamlessly -->

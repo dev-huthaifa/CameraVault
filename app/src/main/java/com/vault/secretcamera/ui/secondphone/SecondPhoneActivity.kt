@@ -82,6 +82,7 @@ class SecondPhoneActivity : AppCompatActivity() {
         }
         isLaunchingChild = false
         AppVaultRepository.revokeAllAccess()
+        com.vault.secretcamera.service.VaultStudioMountManager.unmountFromGeneralStudio(this)
         com.vault.secretcamera.service.AppLockService.cleanupAllBridgedMedia(this)
         loadApps()
         updateShieldUI()
@@ -137,35 +138,43 @@ class SecondPhoneActivity : AppCompatActivity() {
 
     private fun updateShieldUI() {
         val enabled = repository.isAppLockShieldEnabled()
+        val hasAccessibility = AppLockManager.hasAccessibilityShieldEnabled(this)
         val hasUsage = AppLockManager.hasUsageStatsPermission(this)
         val hasOverlay = AppLockManager.hasOverlayPermission(this)
 
         if (!enabled) {
             binding.tvShieldStatus.text = "الدرع: معطل"
             binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
-        } else if (!hasUsage || !hasOverlay) {
-            binding.tvShieldStatus.text = "⚠️ الدرع يحتاج تفعيل الصلاحيات (اضغط هنا)"
-            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_gold))
-        } else {
-            binding.tvShieldStatus.text = "الدرع: نشط ويحظر الفتح الخارجي 🔒"
+        } else if (hasAccessibility) {
+            binding.tvShieldStatus.text = "الدرع الفوري (0 ثانية): نشط ومؤمّن 100% 🛡️"
             binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
+        } else if (hasUsage && hasOverlay) {
+            binding.tvShieldStatus.text = "الدرع: نشط (اضغط لتفعيل الحظر الفوري 0 ثانية ⚡)"
+            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
+        } else {
+            binding.tvShieldStatus.text = "⚠️ الدرع يحتاج تفعيل الحماية (اضغط هنا)"
+            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_gold))
         }
     }
 
     private fun checkPermissionsAndStartService() {
+        val hasAccessibility = AppLockManager.hasAccessibilityShieldEnabled(this)
         val hasUsage = AppLockManager.hasUsageStatsPermission(this)
         val hasOverlay = AppLockManager.hasOverlayPermission(this)
 
-        if (!hasUsage || !hasOverlay) {
-            val missingDesc = when {
-                !hasOverlay && !hasUsage -> "1. الظهور فوق التطبيقات\n2. الوصول لبيانات الاستخدام"
-                !hasOverlay -> "الظهور فوق التطبيقات (لإظهار شاشة الخطأ وزر استديو الخزنة)"
-                else -> "الوصول لبيانات الاستخدام (لكشف فتح التطبيق من الشاشة الرئيسية وحظره فوراً)"
-            }
+        if (hasUsage || hasOverlay) {
+            AppLockManager.startLockService(this)
+        }
+
+        if (!hasAccessibility) {
             AlertDialog.Builder(this)
-                .setTitle("تفعيل الحظر الصارم من الشاشة الرئيسية 🔒")
-                .setMessage("لمنع فتح التطبيقات من الشاشة الرئيسية نهائياً وإظهار رسالة التوقف التمويهية، يرجى منح الصلاحية التالية:\n\n$missingDesc")
-                .setPositiveButton("تفعيل الآن") { _, _ ->
+                .setTitle("تفعيل محرك الحظر الفوري (0 ثانية) 🛡️")
+                .setMessage("لمنع فتح أي تطبيق من الشاشة الرئيسية في 0 جزء من الثانية (قبل ظهور أي شاشة منه) وإظهار رسالة التوقف الفورية:\n\nيرجى تفعيل «محرك حماية الكاميرا الذكية» من خدمات إمكانية الوصول، أو يمكنك حذف التطبيق من الشاشة الرئيسية وتشغيله داخل الخزنة فقط!")
+                .setPositiveButton("تفعيل الحظر الفوري (الأقوى)") { _, _ ->
+                    isLaunchingChild = true
+                    AppLockManager.requestAccessibilityShieldPermission(this)
+                }
+                .setNeutralButton("صلاحيات الحظر البديلة") { _, _ ->
                     isLaunchingChild = true
                     pendingPermissionChain = true
                     if (!hasOverlay) {
@@ -174,12 +183,12 @@ class SecondPhoneActivity : AppCompatActivity() {
                         AppLockManager.requestUsageStatsPermission(this)
                     }
                 }
-                .setNegativeButton("لاحقاً", null)
+                .setNegativeButton("إلغاء", null)
                 .show()
         } else {
             AppLockManager.startLockService(this)
             updateShieldUI()
-            Toast.makeText(this, "✅ درع الحظر من الشاشة الرئيسية وزر استديو الخزنة نشطان!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "✅ محرك الحظر الفوري (0 ثانية) نشط بأعلى كفاءة!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -215,37 +224,106 @@ class SecondPhoneActivity : AppCompatActivity() {
                 }
                 null -> {}
             }
-        } else {
-            val hasOverlay = AppLockManager.hasOverlayPermission(this)
-            val hasUsage = AppLockManager.hasUsageStatsPermission(this)
+            return
+        }
 
-            if (!hasOverlay || !hasUsage) {
-                val missingName = if (!hasOverlay) "الظهور فوق التطبيقات" else "الوصول لبيانات الاستخدام"
-                AlertDialog.Builder(this)
-                    .setTitle("تأمين «${item.appName}» داخل الخزنة 🔒")
-                    .setMessage("لمنع تطبيق «${item.appName}» من الفتح نهائياً من الشاشة الرئيسية وتفعيل زر (استديو الخزنة 🔒)، يرجى تفعيل صلاحية ($missingName) الآن.")
-                    .setPositiveButton("تفعيل الصلاحية الآن") { _, _ ->
-                        isLaunchingChild = true
-                        pendingPermissionChain = true
-                        if (!hasOverlay) {
-                            AppLockManager.requestOverlayPermission(this)
-                        } else {
-                            AppLockManager.requestUsageStatsPermission(this)
+        val isInstalledOutside = AppLockManager.isPackageInstalledOnPhone(this, item.packageName)
+        val isolatedUrl = VaultIsolatedAppActivity.resolveIsolatedAppUrl(item.packageName, item.appName)
+
+        // 1. If the app was deleted from the Home Screen (100% hidden) OR user prefers Isolated Container:
+        if (!isInstalledOutside || repository.isIsolatedContainerPreferred(item.packageName)) {
+            if (isolatedUrl != null) {
+                launchInIsolatedContainer(item)
+                return
+            } else if (!isInstalledOutside) {
+                // App is not installed outside and is an offline APK -> offer to restore from Vault APK backup or open isolated
+                val backupApk = repository.getBackedUpApkFile(item.packageName)
+                if (backupApk != null) {
+                    AlertDialog.Builder(this)
+                        .setTitle("تشغيل «${item.appName}» المحفوظ بالخزنة 📦")
+                        .setMessage("هذا التطبيق محذوف تماماً من الشاشة الرئيسية ومن نظام الهاتف الخارجي لخصوصيتك.\nيمكنك تشغيله عبر المتصفح المعزول أو استعادة تثبيته من النسخة المشفرة المحفوظة داخل الخزنة.")
+                        .setPositiveButton("استعادة وتثبيت النسخة المحفوظة") { _, _ ->
+                            installBackedUpApk(backupApk)
                         }
-                    }
-                    .setNegativeButton("فتح التطبيق الآن") { _, _ ->
-                        launchProtectedAppNow(item)
-                    }
-                    .show()
+                        .setNeutralButton("فتح في المحرك المعزول") { _, _ ->
+                            launchInIsolatedContainer(item)
+                        }
+                        .setNegativeButton("إلغاء", null)
+                        .show()
+                } else {
+                    launchInIsolatedContainer(item)
+                }
                 return
             }
-            launchProtectedAppNow(item)
+        }
+
+        // 2. Native app is installed on the phone: check if shield protection is active
+        val hasAccessibility = AppLockManager.hasAccessibilityShieldEnabled(this)
+        val hasOverlay = AppLockManager.hasOverlayPermission(this)
+        val hasUsage = AppLockManager.hasUsageStatsPermission(this)
+
+        if (!hasAccessibility && (!hasOverlay || !hasUsage)) {
+            val choices = arrayOf(
+                "🗑️ حذف التطبيق من الشاشة الرئيسية وتشغيله داخل الخزنة فقط (إخفاء 100%)",
+                "🛡️ تفعيل محرك الحظر الفوري (0 ثانية) لمنع فتحه من الشاشة الرئيسية",
+                "🚀 فتح التطبيق الآن (مع دمج ألبوم استديو الخزنة)"
+            )
+            AlertDialog.Builder(this)
+                .setTitle("حماية وخصوصية «${item.appName}» 🔒")
+                .setItems(choices) { _, which ->
+                    when (which) {
+                        0 -> {
+                            repository.setIsolatedContainerPreferred(item.packageName, true)
+                            isLaunchingChild = true
+                            AppLockManager.uninstallAppFromHomeScreen(this, item.packageName)
+                        }
+                        1 -> {
+                            isLaunchingChild = true
+                            AppLockManager.requestAccessibilityShieldPermission(this)
+                        }
+                        2 -> {
+                            launchProtectedAppNow(item)
+                        }
+                    }
+                }
+                .show()
+            return
+        }
+
+        launchProtectedAppNow(item)
+    }
+
+    private fun launchInIsolatedContainer(item: AppVaultItem) {
+        isLaunchingChild = true
+        val intent = Intent(this, VaultIsolatedAppActivity::class.java).apply {
+            putExtra(VaultIsolatedAppActivity.EXTRA_PACKAGE_NAME, item.packageName)
+            putExtra(VaultIsolatedAppActivity.EXTRA_APP_NAME, item.appName)
+        }
+        startActivity(intent)
+    }
+
+    private fun installBackedUpApk(apkFile: java.io.File) {
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.provider",
+                apkFile
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            isLaunchingChild = true
+            startActivity(installIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "تعذر فتح ملف التثبيت المحفوظ: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun launchProtectedAppNow(item: AppVaultItem) {
-        // Grant session access token and immediately activate the floating "استديو الخزنة 🔒" button
+        // Grant session access token and automatically mount the native "استديو الخزنة" album inside the General Studio!
         AppVaultRepository.grantTemporaryAccess(item.packageName, 15 * 60_000L)
+        com.vault.secretcamera.service.VaultStudioMountManager.mountForActiveSession(this)
         AppLockManager.notifyAppLaunchedFromVault(this, item.packageName)
 
         val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
@@ -253,7 +331,8 @@ class SecondPhoneActivity : AppCompatActivity() {
             isLaunchingChild = true
             startActivity(launchIntent)
         } else {
-            Toast.makeText(this, "تعذر تشغيل التطبيق (قد يكون تم إلغاء تثبيته)", Toast.LENGTH_SHORT).show()
+            // If native app was uninstalled from the Home Screen, open it seamlessly in the Isolated Container!
+            launchInIsolatedContainer(item)
         }
     }
 
@@ -263,29 +342,66 @@ class SecondPhoneActivity : AppCompatActivity() {
             return
         }
 
-        val lockTitle = if (item.isLockedFromOutside) {
-            "إلغاء حظر رسالة الخطأ من الشاشة الرئيسية"
+        val isInstalledOutside = AppLockManager.isPackageInstalledOnPhone(this, item.packageName)
+        val hideOrRestoreOption = if (isInstalledOutside) {
+            "🗑️ حذف الأيقونة نهائياً من الشاشة الرئيسية (يبقى يعمل داخل الخزنة فقط)"
         } else {
-            "تفعيل حظر الفتح من الشاشة الرئيسية (رسالة خطأ) 🔒"
+            "📦 استعادة تثبيت التطبيق إلى الشاشة الرئيسية للهاتف"
         }
+
+        val lockTitle = if (item.isLockedFromOutside) {
+            "🔓 إلغاء حظر الفتح من الشاشة الرئيسية"
+        } else {
+            "🔒 تفعيل حظر الفتح من الشاشة الرئيسية (0 ثانية)"
+        }
+
         val options = arrayOf(
-            "تشغيل التطبيق من داخل الخزنة 🚀",
+            "🚀 تشغيل في المحرك المعزول داخل الخزنة (متصل مباشرة باستديو الخزنة)",
+            "📱 تشغيل التطبيق الأصلي (مع دمج ألبوم استديو الخزنة بالاستديو العام)",
+            hideOrRestoreOption,
             lockTitle,
-            "إخراج التطبيق من الخزنة وإعادته للوضع العادي 🗑️"
+            "❌ إزالة التطبيق من الجوال الثاني"
         )
 
         AlertDialog.Builder(this)
-            .setTitle(item.appName)
+            .setTitle("إدارة «${item.appName}» 🔒")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> handleAppClick(item)
+                    0 -> {
+                        repository.setIsolatedContainerPreferred(item.packageName, true)
+                        launchInIsolatedContainer(item)
+                    }
                     1 -> {
+                        repository.setIsolatedContainerPreferred(item.packageName, false)
+                        launchProtectedAppNow(item)
+                    }
+                    2 -> {
+                        if (isInstalledOutside) {
+                            repository.archiveAppIconAndApkAsync(item.packageName)
+                            repository.setIsolatedContainerPreferred(item.packageName, true)
+                            isLaunchingChild = true
+                            Toast.makeText(
+                                this,
+                                "قم بتأكيد الحذف لإخفاء «${item.appName}» نهائياً من الشاشة الرئيسية وسيبقى داخل الخزنة فقط 🔒",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            AppLockManager.uninstallAppFromHomeScreen(this, item.packageName)
+                        } else {
+                            val backupApk = repository.getBackedUpApkFile(item.packageName)
+                            if (backupApk != null) {
+                                installBackedUpApk(backupApk)
+                            } else {
+                                Toast.makeText(this, "التطبيق يعمل حالياً بوضع العزل الكامل داخل الخزنة", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    3 -> {
                         repository.toggleAppLock(item.packageName, !item.isLockedFromOutside)
                         loadApps()
                         val msg = if (!item.isLockedFromOutside) "تم تفعيل القفل من الخارج" else "تم إلغاء القفل من الخارج"
                         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
-                    2 -> {
+                    4 -> {
                         repository.removeApp(item.packageName)
                         loadApps()
                         Toast.makeText(this, "تمت إزالة ${item.appName} من الجوال الثاني", Toast.LENGTH_SHORT).show()
@@ -334,9 +450,16 @@ class SecondPhoneActivity : AppCompatActivity() {
                 holder.b.ivDesktopAppIcon.clearColorFilter()
                 try {
                     val iconDrawable = packageManager.getApplicationIcon(item.packageName)
+                    repository.saveAppIcon(item.packageName, iconDrawable)
                     holder.b.ivDesktopAppIcon.setImageDrawable(iconDrawable)
                 } catch (_: PackageManager.NameNotFoundException) {
-                    holder.b.ivDesktopAppIcon.setImageResource(R.drawable.ic_smartphone)
+                    // App was deleted/hidden from the outside phone! Load its saved icon from inside the Vault!
+                    val savedIcon = repository.getSavedAppIcon(item.packageName)
+                    if (savedIcon != null) {
+                        holder.b.ivDesktopAppIcon.setImageDrawable(savedIcon)
+                    } else {
+                        holder.b.ivDesktopAppIcon.setImageResource(R.drawable.ic_smartphone)
+                    }
                 }
                 holder.b.ivLockedBadge.visibility = if (item.isLockedFromOutside) View.VISIBLE else View.GONE
             }
