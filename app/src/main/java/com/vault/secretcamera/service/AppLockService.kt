@@ -7,9 +7,13 @@ import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -21,9 +25,12 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -132,18 +139,40 @@ class AppLockService : Service() {
     private var lastInterceptedPkg: String? = null
     private var lastInterceptTime: Long = 0L
 
-    // Floating "استديو الخزنة 🔒" Quick-Access Pill for Vaulted Apps & System Photo Pickers
+    // WindowManager for both:
+    // 1) Full-screen instant Crash Blocker Overlay (prevents outside launch in 0ms on Android 10-15)
+    // 2) Floating "استديو الخزنة 🔒" Quick-Access Pill for Vaulted Apps & System Photo Pickers
     private var windowManager: WindowManager? = null
     private var floatingVaultButton: View? = null
     private var floatingLayoutParams: WindowManager.LayoutParams? = null
+    private var fullScreenCrashOverlay: View? = null
     private var currentActiveProtectedPkg: String? = null
     private var launcherPackages: Set<String> = emptySet()
+
+    // Broadcast receiver to immediately lock vaulted apps the millisecond the user presses Home, Recents, or turns off the screen
+    private val systemEventReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    revokeSessionAndLockAll()
+                }
+                @Suppress("DEPRECATION")
+                Intent.ACTION_CLOSE_SYSTEM_DIALOGS -> {
+                    val reason = intent.getStringExtra("reason") ?: ""
+                    if (reason == "homekey" || reason == "recentapps" || reason == "fs_gesture") {
+                        revokeSessionAndLockAll()
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         appVaultRepository = AppVaultRepository(this)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         refreshLauncherPackages()
+        registerSystemEventReceiver()
         startForegroundNotification()
         startMonitoring()
     }
@@ -152,6 +181,7 @@ class AppLockService : Service() {
         if (intent?.action == ACTION_ACTIVATE_VAULT_APP) {
             val targetPkg = intent.getStringExtra(EXTRA_TARGET_PKG)
             if (!targetPkg.isNullOrEmpty()) {
+                dismissCrashBlockerOverlay()
                 AppVaultRepository.grantTemporaryAccess(targetPkg, 15 * 60_000L)
                 currentActiveProtectedPkg = targetPkg
                 showFloatingVaultStudioButton(targetPkg)
@@ -163,10 +193,36 @@ class AppLockService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(systemEventReceiver)
+        } catch (_: Exception) {}
         hideFloatingVaultStudioButton()
+        dismissCrashBlockerOverlay()
         cleanupAllBridgedMedia(this)
         super.onDestroy()
         serviceJob.cancel()
+    }
+
+    private fun registerSystemEventReceiver() {
+        try {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                @Suppress("DEPRECATION")
+                addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(systemEventReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(systemEventReceiver, filter)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun revokeSessionAndLockAll() {
+        AppVaultRepository.revokeAllAccess()
+        currentActiveProtectedPkg = null
+        hideFloatingVaultStudioButton()
+        cleanupAllBridgedMedia(this)
     }
 
     private fun refreshLauncherPackages() {
@@ -181,6 +237,23 @@ class AppLockService : Service() {
             }
             launcherPackages = set
         } catch (_: Exception) {}
+    }
+
+    private fun isHomeLauncherPackage(pkg: String): Boolean {
+        if (launcherPackages.contains(pkg)) return true
+        val lower = pkg.lowercase()
+        return lower.contains("launcher") ||
+                lower.contains("miui.home") ||
+                lower.contains("sec.android.app.launcher") ||
+                lower.contains("trebuchet") ||
+                lower.contains("lawnchair") ||
+                lower.contains("globallauncher") ||
+                lower.contains("oppo.launcher") ||
+                lower.contains("huawei.android.launcher") ||
+                lower.contains("nexuslauncher") ||
+                lower.contains("transsion") ||
+                lower.contains("hios") ||
+                lower.contains("xos.launcher")
     }
 
     private fun startForegroundNotification() {
@@ -239,7 +312,7 @@ class AppLockService : Service() {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                delay(200L)
+                delay(120L)
             }
         }
     }
@@ -247,7 +320,7 @@ class AppLockService : Service() {
     private fun getForegroundPackage(usageStatsManager: UsageStatsManager?): String? {
         if (usageStatsManager == null) return null
         val endTime = System.currentTimeMillis()
-        val beginTime = endTime - 15_000L
+        val beginTime = endTime - 10_000L
         val usageEvents = usageStatsManager.queryEvents(beginTime, endTime) ?: return null
 
         var foregroundPackage: String? = null
@@ -269,11 +342,9 @@ class AppLockService : Service() {
             return
         }
 
-        // If user went back to the Home Screen Launcher, end the active floating session & clean up bridged files
-        if (launcherPackages.contains(targetPackage)) {
-            currentActiveProtectedPkg = null
-            hideFloatingVaultStudioButton()
-            cleanupAllBridgedMedia(this)
+        // If user went back to the Home Screen Launcher, IMMEDIATELY revoke all temporary access & lock vaulted apps!
+        if (isHomeLauncherPackage(targetPackage)) {
+            revokeSessionAndLockAll()
             return
         }
 
@@ -281,31 +352,38 @@ class AppLockService : Service() {
         val isProtected = appVaultRepository.isAppProtected(targetPackage)
         val hasAccess = AppVaultRepository.hasTemporaryAccess(targetPackage)
 
-        // 1. Strict Outside Block: If app is protected and NOT authorized via Second Phone, block with FakeCrashActivity
+        // 1. STRICT OUTSIDE BLOCK: If app is protected and NOT authorized via Second Phone,
+        // IMMEDIATELY cover the screen with a Full-Screen WindowManager Blocker Overlay (0ms delay, bypasses Android 10+ BAL restrictions)
+        // AND fire FakeCrashActivity!
         if (isProtected && !hasAccess) {
             hideFloatingVaultStudioButton()
             val now = System.currentTimeMillis()
-            if (targetPackage == lastInterceptedPkg && (now - lastInterceptTime) < 900L) {
+            if (targetPackage == lastInterceptedPkg && (now - lastInterceptTime) < 600L) {
                 return
             }
 
             lastInterceptedPkg = targetPackage
             lastInterceptTime = now
 
-            val crashIntent = Intent(this, FakeCrashActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                putExtra(FakeCrashActivity.EXTRA_TARGET_PACKAGE, targetPackage)
-            }
-            startActivity(crashIntent)
+            showInstantCrashBlockerOverlay(targetPackage)
+
+            try {
+                val crashIntent = Intent(this, FakeCrashActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_NO_ANIMATION
+                    putExtra(FakeCrashActivity.EXTRA_TARGET_PACKAGE, targetPackage)
+                }
+                startActivity(crashIntent)
+            } catch (_: Exception) {}
             return
         }
 
         // 2. If user is inside an authorized Vaulted app (e.g., X, Instagram, WhatsApp)
         // OR inside ANY Gallery / PhotoPicker / Sub-Activity opened during that session -> Show the Floating "استديو الخزنة 🔒" button!
         if (isInVault && hasAccess) {
+            dismissCrashBlockerOverlay()
             AppVaultRepository.grantTemporaryAccess(targetPackage, 15 * 60_000L)
             currentActiveProtectedPkg = targetPackage
             showFloatingVaultStudioButton(targetPackage)
@@ -318,6 +396,191 @@ class AppLockService : Service() {
         } else {
             currentActiveProtectedPkg = null
             hideFloatingVaultStudioButton()
+        }
+    }
+
+    /**
+     * Draws an opaque, full-screen system error overlay directly via WindowManager (TYPE_APPLICATION_OVERLAY).
+     * Unlike Service.startActivity() which Android 10+ blocks from the background, WindowManager overlays
+     * appear in 0 milliseconds and completely block any interaction with the protected app launched from the Home Screen!
+     */
+    private fun showInstantCrashBlockerOverlay(targetPkg: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            return
+        }
+
+        mainHandler.post {
+            dismissCrashBlockerOverlay()
+
+            try {
+                val density = resources.displayMetrics.density
+                fun dp(v: Int): Int = (v * density).toInt()
+
+                val appLabel = try {
+                    val info = packageManager.getApplicationInfo(targetPkg, 0)
+                    packageManager.getApplicationLabel(info).toString()
+                } catch (_: PackageManager.NameNotFoundException) {
+                    "التطبيق"
+                }
+
+                // Full-screen opaque dark backdrop so the underlying app is 100% hidden and untouchable
+                val root = object : FrameLayout(this) {
+                    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                        if (event?.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                            kickToHomeScreenAndDismiss()
+                            return true
+                        }
+                        return super.dispatchKeyEvent(event)
+                    }
+                }.apply {
+                    setBackgroundColor(Color.parseColor("#FF090A0D"))
+                    isClickable = true
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                }
+
+                // System crash card
+                val dialogCard = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(24), dp(22), dp(24), dp(18))
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(20).toFloat()
+                        setColor(Color.parseColor("#2B2D31"))
+                        setStroke(dp(1), Color.parseColor("#3F4248"))
+                    }
+                    elevation = dp(16).toFloat()
+                }
+
+                val headerRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+
+                val appIconView = ImageView(this).apply {
+                    try {
+                        setImageDrawable(packageManager.getApplicationIcon(targetPkg))
+                    } catch (_: Exception) {
+                        setImageResource(android.R.drawable.sym_def_app_icon)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                        marginEnd = dp(14)
+                    }
+                }
+
+                val titleView = TextView(this).apply {
+                    text = "توقف تطبيق «$appLabel» بشكل متكرر"
+                    setTextColor(Color.WHITE)
+                    textSize = 16.5f
+                    setTypeface(typeface, Typeface.BOLD)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                headerRow.addView(appIconView)
+                headerRow.addView(titleView)
+
+                val bodyView = TextView(this).apply {
+                    text = "تعذر تشغيل «$appLabel» بسبب خطأ في النظام وتلف في ملفات التشغيل الأساسية (رمز الخطأ: ERR_SYS_0x80040111).\nلا يمكن فتح هذا التطبيق."
+                    setTextColor(Color.parseColor("#B8BCC4"))
+                    textSize = 13.5f
+                    setPadding(0, dp(14), 0, dp(18))
+                }
+
+                val divider = View(this).apply {
+                    setBackgroundColor(Color.parseColor("#3E4046"))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(1)
+                    )
+                }
+
+                val closeBtn = Button(this).apply {
+                    text = "✕   إغلاق التطبيق"
+                    setTextColor(Color.parseColor("#FF6B6B"))
+                    setBackgroundColor(Color.TRANSPARENT)
+                    textSize = 14.5f
+                    setTypeface(typeface, Typeface.BOLD)
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), dp(12), dp(8), dp(12))
+                    setOnClickListener {
+                        kickToHomeScreenAndDismiss()
+                    }
+                }
+
+                val infoBtn = Button(this).apply {
+                    text = "ⓘ   معلومات التطبيق"
+                    setTextColor(Color.parseColor("#E0E2E8"))
+                    setBackgroundColor(Color.TRANSPARENT)
+                    textSize = 14f
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), dp(10), dp(8), dp(6))
+                    setOnClickListener {
+                        kickToHomeScreenAndDismiss()
+                    }
+                }
+
+                dialogCard.addView(headerRow)
+                dialogCard.addView(bodyView)
+                dialogCard.addView(divider)
+                dialogCard.addView(closeBtn)
+                dialogCard.addView(infoBtn)
+
+                val cardParams = FrameLayout.LayoutParams(
+                    (resources.displayMetrics.widthPixels * 0.88).toInt(),
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER
+                }
+                root.addView(dialogCard, cardParams)
+
+                val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ERROR
+                }
+
+                val overlayParams = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    layoutType,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    PixelFormat.OPAQUE
+                ).apply {
+                    gravity = Gravity.CENTER
+                }
+
+                windowManager?.addView(root, overlayParams)
+                fullScreenCrashOverlay = root
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun kickToHomeScreenAndDismiss() {
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(homeIntent)
+        } catch (_: Exception) {}
+
+        mainHandler.postDelayed({
+            dismissCrashBlockerOverlay()
+        }, 250L)
+    }
+
+    private fun dismissCrashBlockerOverlay() {
+        mainHandler.post {
+            val overlay = fullScreenCrashOverlay ?: return@post
+            try {
+                windowManager?.removeView(overlay)
+            } catch (_: Exception) {}
+            fullScreenCrashOverlay = null
         }
     }
 

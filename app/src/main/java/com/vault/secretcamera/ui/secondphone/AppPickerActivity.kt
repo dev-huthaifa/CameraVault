@@ -71,13 +71,40 @@ class AppPickerActivity : AppCompatActivity() {
     }
 
     private var isLaunchingPermission = false
+    private var pendingSecondPermissionCheck = false
 
     override fun onResume() {
         super.onResume()
-        isLaunchingPermission = false
         val app = application as SecretVaultApp
         if (!app.securityPreferences.isUnlocked()) {
             finish()
+            return
+        }
+        isLaunchingPermission = false
+
+        val hasUsage = com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
+        val hasOverlay = com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)
+
+        if (hasUsage || hasOverlay) {
+            com.vault.secretcamera.service.AppLockManager.startLockService(this)
+        }
+
+        if (pendingSecondPermissionCheck) {
+            pendingSecondPermissionCheck = false
+            if (!hasUsage) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("الخطوة الأخيرة: تفعيل كشف الفتح الخارجي 🔒")
+                    .setMessage("تم تفعيل الظهور فوق التطبيقات بنجاح! الآن يرجى تفعيل (الوصول لبيانات الاستخدام) ليكتشف التطبيق أي محاولة لفتح التطبيق من الشاشة الرئيسية ويحظره فوراً.")
+                    .setPositiveButton("تفعيل الآن") { _, _ ->
+                        isLaunchingPermission = true
+                        com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
+                    }
+                    .setNegativeButton("لاحقاً", null)
+                    .show()
+            } else if (hasOverlay && hasUsage) {
+                com.vault.secretcamera.service.AppLockManager.startLockService(this)
+                Toast.makeText(this, "✅ تم تفعيل الحظر الصارم من الشاشة الرئيسية بنجاح!", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -205,6 +232,7 @@ class AppPickerActivity : AppCompatActivity() {
                     .setMessage("تم نقل «${app.appName}» داخل الخزنة.\nلمنعه من الفتح في الشاشة الرئيسية وإظهار زر (استديو الخزنة 🔒) فوق الاستديو العام داخل التطبيق، يرجى منح إذن (الظهور فوق التطبيقات) و(بيانات الاستخدام).")
                     .setPositiveButton("تفعيل الآن") { _, _ ->
                         isLaunchingPermission = true
+                        pendingSecondPermissionCheck = true
                         if (!hasOverlay) {
                             com.vault.secretcamera.service.AppLockManager.requestOverlayPermission(this)
                         } else if (!hasUsage) {

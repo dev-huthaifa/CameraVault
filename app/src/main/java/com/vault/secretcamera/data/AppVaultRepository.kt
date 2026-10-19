@@ -41,6 +41,10 @@ class AppVaultRepository(private val context: Context) {
         fun revokeAccess(packageName: String) {
             temporaryAccessMap.remove(packageName)
         }
+
+        fun revokeAllAccess() {
+            temporaryAccessMap.clear()
+        }
     }
 
     init {

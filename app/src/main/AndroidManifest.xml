@@ -57,6 +57,10 @@
             <action android:name="android.intent.action.SEND_MULTIPLE" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
     </queries>
 
     <application

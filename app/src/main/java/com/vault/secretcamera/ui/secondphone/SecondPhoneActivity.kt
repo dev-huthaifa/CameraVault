@@ -72,6 +72,8 @@ class SecondPhoneActivity : AppCompatActivity() {
         AdManager.loadInterstitial(this)
     }
 
+    private var pendingPermissionChain = false
+
     override fun onResume() {
         super.onResume()
         if (!securityPrefs.isUnlocked()) {
@@ -79,9 +81,28 @@ class SecondPhoneActivity : AppCompatActivity() {
             return
         }
         isLaunchingChild = false
+        AppVaultRepository.revokeAllAccess()
         com.vault.secretcamera.service.AppLockService.cleanupAllBridgedMedia(this)
         loadApps()
         updateShieldUI()
+
+        val hasUsage = AppLockManager.hasUsageStatsPermission(this)
+        val hasOverlay = AppLockManager.hasOverlayPermission(this)
+
+        if (repository.isAppLockShieldEnabled() && (hasUsage || hasOverlay)) {
+            AppLockManager.startLockService(this)
+        }
+
+        if (pendingPermissionChain) {
+            pendingPermissionChain = false
+            if (!hasOverlay || !hasUsage) {
+                checkPermissionsAndStartService()
+            } else {
+                AppLockManager.startLockService(this)
+                Toast.makeText(this, "✅ تم تفعيل الحظر الصارم من الشاشة الرئيسية بنجاح!", Toast.LENGTH_LONG).show()
+            }
+        }
+
         AdManager.loadBanner(this, binding.adBannerSecondPhoneContainer)
     }
 
@@ -96,6 +117,10 @@ class SecondPhoneActivity : AppCompatActivity() {
     private fun setupShieldToggle() {
         binding.switchShield.isChecked = repository.isAppLockShieldEnabled()
         updateShieldUI()
+
+        binding.tvShieldStatus.setOnClickListener {
+            checkPermissionsAndStartService()
+        }
 
         binding.switchShield.setOnCheckedChangeListener { _, isChecked ->
             repository.setAppLockShieldEnabled(isChecked)
@@ -112,13 +137,19 @@ class SecondPhoneActivity : AppCompatActivity() {
 
     private fun updateShieldUI() {
         val enabled = repository.isAppLockShieldEnabled()
-        binding.tvShieldStatus.text = if (enabled) "الدرع: نشط 🔒" else "الدرع: معطل"
-        binding.tvShieldStatus.setTextColor(
-            ContextCompat.getColor(
-                this,
-                if (enabled) R.color.vault_accent_cyan else R.color.text_secondary
-            )
-        )
+        val hasUsage = AppLockManager.hasUsageStatsPermission(this)
+        val hasOverlay = AppLockManager.hasOverlayPermission(this)
+
+        if (!enabled) {
+            binding.tvShieldStatus.text = "الدرع: معطل"
+            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        } else if (!hasUsage || !hasOverlay) {
+            binding.tvShieldStatus.text = "⚠️ الدرع يحتاج تفعيل الصلاحيات (اضغط هنا)"
+            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_gold))
+        } else {
+            binding.tvShieldStatus.text = "الدرع: نشط ويحظر الفتح الخارجي 🔒"
+            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
+        }
     }
 
     private fun checkPermissionsAndStartService() {
@@ -126,11 +157,17 @@ class SecondPhoneActivity : AppCompatActivity() {
         val hasOverlay = AppLockManager.hasOverlayPermission(this)
 
         if (!hasUsage || !hasOverlay) {
+            val missingDesc = when {
+                !hasOverlay && !hasUsage -> "1. الظهور فوق التطبيقات\n2. الوصول لبيانات الاستخدام"
+                !hasOverlay -> "الظهور فوق التطبيقات (لإظهار شاشة الخطأ وزر استديو الخزنة)"
+                else -> "الوصول لبيانات الاستخدام (لكشف فتح التطبيق من الشاشة الرئيسية وحظره فوراً)"
+            }
             AlertDialog.Builder(this)
-                .setTitle("صلاحيات درع الحماية واستديو الخزنة 🔒")
-                .setMessage("لتأمين التطبيقات من خارج الخزنة وإظهار زر (استديو الخزنة 🔒) فوق الاستديو العام داخل التطبيقات، يحتاج التطبيق إلى صلاحيتي (الوصول لبيانات الاستخدام) و(الظهور فوق التطبيقات).\nهل تريد تفعيلها الآن؟")
-                .setPositiveButton("تفعيل الصلاحيات") { _, _ ->
+                .setTitle("تفعيل الحظر الصارم من الشاشة الرئيسية 🔒")
+                .setMessage("لمنع فتح التطبيقات من الشاشة الرئيسية نهائياً وإظهار رسالة التوقف التمويهية، يرجى منح الصلاحية التالية:\n\n$missingDesc")
+                .setPositiveButton("تفعيل الآن") { _, _ ->
                     isLaunchingChild = true
+                    pendingPermissionChain = true
                     if (!hasOverlay) {
                         AppLockManager.requestOverlayPermission(this)
                     } else if (!hasUsage) {
@@ -141,7 +178,8 @@ class SecondPhoneActivity : AppCompatActivity() {
                 .show()
         } else {
             AppLockManager.startLockService(this)
-            Toast.makeText(this, "تم تفعيل درع الحماية وزر استديو الخزنة بنجاح!", Toast.LENGTH_SHORT).show()
+            updateShieldUI()
+            Toast.makeText(this, "✅ درع الحظر من الشاشة الرئيسية وزر استديو الخزنة نشطان!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -178,15 +216,24 @@ class SecondPhoneActivity : AppCompatActivity() {
                 null -> {}
             }
         } else {
-            if (!AppLockManager.hasOverlayPermission(this)) {
+            val hasOverlay = AppLockManager.hasOverlayPermission(this)
+            val hasUsage = AppLockManager.hasUsageStatsPermission(this)
+
+            if (!hasOverlay || !hasUsage) {
+                val missingName = if (!hasOverlay) "الظهور فوق التطبيقات" else "الوصول لبيانات الاستخدام"
                 AlertDialog.Builder(this)
-                    .setTitle("تفعيل زر استديو الخزنة المباشر 🔒")
-                    .setMessage("لتتمكن من الدخول مباشرة إلى (استديو الخزنة 🔒) عندما يفتح لك الاستديو العام داخل تطبيق «${item.appName}»، يرجى تفعيل صلاحية (الظهور فوق التطبيقات) مرة واحدة فقط.")
+                    .setTitle("تأمين «${item.appName}» داخل الخزنة 🔒")
+                    .setMessage("لمنع تطبيق «${item.appName}» من الفتح نهائياً من الشاشة الرئيسية وتفعيل زر (استديو الخزنة 🔒)، يرجى تفعيل صلاحية ($missingName) الآن.")
                     .setPositiveButton("تفعيل الصلاحية الآن") { _, _ ->
                         isLaunchingChild = true
-                        AppLockManager.requestOverlayPermission(this)
+                        pendingPermissionChain = true
+                        if (!hasOverlay) {
+                            AppLockManager.requestOverlayPermission(this)
+                        } else {
+                            AppLockManager.requestUsageStatsPermission(this)
+                        }
                     }
-                    .setNegativeButton("فتح التطبيق مباشرة") { _, _ ->
+                    .setNegativeButton("فتح التطبيق الآن") { _, _ ->
                         launchProtectedAppNow(item)
                     }
                     .show()
