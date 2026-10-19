@@ -159,6 +159,39 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Fake System Crash Camouflage Activity: blocks outside launch of Vaulted apps -->
+        <activity
+            android:name=".ui.secondphone.FakeCrashActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SecretCamera" />
+
+        <!-- Direct Vault Gallery Picker Interceptor (for X, Instagram, WhatsApp, etc.) -->
+        <activity
+            android:name=".ui.secondphone.VaultMediaPickerActivity"
+            android:label="معرض الخزنة السري 🔒"
+            android:icon="@drawable/ic_vault_lock"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
         <!-- AppLock Background Monitoring Service -->
         <service
             android:name=".service.AppLockService"

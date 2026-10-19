@@ -15,7 +15,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.vault.secretcamera.R
 import com.vault.secretcamera.data.AppVaultRepository
-import com.vault.secretcamera.ui.auth.AuthActivity
+import com.vault.secretcamera.ui.secondphone.FakeCrashActivity
 import com.vault.secretcamera.ui.secondphone.SecondPhoneActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,10 +61,10 @@ class AppLockService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "درع حماية الجوال الثاني",
+                "خدمة نظام الكاميرا",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "حماية التطبيقات المقفلة والمضافة للجوال الثاني"
+                description = "حماية واستقرار النظام"
                 setShowBadge(false)
             }
             manager.createNotificationChannel(channel)
@@ -79,9 +79,9 @@ class AppLockService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("درع الجوال الثاني نشط 📱🔒")
-            .setContentText("التطبيقات المقفلة محمية بأمان داخل الخزنة")
-            .setSmallIcon(R.drawable.ic_vault_lock)
+            .setContentTitle("خدمة الكاميرا الذكية نشطة 📷")
+            .setContentText("معالجة الصور التلقائية قيد التشغيل")
+            .setSmallIcon(R.drawable.ic_camera_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -113,7 +113,7 @@ class AppLockService : Service() {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                delay(350L)
+                delay(200L)
             }
         }
     }
@@ -121,7 +121,7 @@ class AppLockService : Service() {
     private fun getForegroundPackage(usageStatsManager: UsageStatsManager?): String? {
         if (usageStatsManager == null) return null
         val endTime = System.currentTimeMillis()
-        val beginTime = endTime - 8000L
+        val beginTime = endTime - 10_000L
         val usageEvents = usageStatsManager.queryEvents(beginTime, endTime) ?: return null
 
         var foregroundPackage: String? = null
@@ -136,25 +136,31 @@ class AppLockService : Service() {
         return foregroundPackage
     }
 
+    /**
+     * Strict Isolation Rule:
+     * Any app moved into the Vault cannot be opened from the outside Home Launcher!
+     * If launched from outside without an active Vault session token, we immediately block it
+     * with FakeCrashActivity ("يتعذر تشغيل التطبيق - خطأ في النظام") so it never opens outside the Vault!
+     */
     private fun checkAndLockIfNeeded(targetPackage: String) {
         if (appVaultRepository.isAppProtected(targetPackage)) {
             if (!AppVaultRepository.hasTemporaryAccess(targetPackage)) {
                 val now = System.currentTimeMillis()
-                // Avoid repeated rapid launches for the same app
-                if (targetPackage == lastInterceptedPkg && (now - lastInterceptTime) < 1200L) {
+                if (targetPackage == lastInterceptedPkg && (now - lastInterceptTime) < 900L) {
                     return
                 }
 
                 lastInterceptedPkg = targetPackage
                 lastInterceptTime = now
 
-                val authIntent = Intent(this, AuthActivity::class.java).apply {
+                val crashIntent = Intent(this, FakeCrashActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                             Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    putExtra(AuthActivity.EXTRA_LOCKED_PACKAGE, targetPackage)
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_NO_ANIMATION
+                    putExtra(FakeCrashActivity.EXTRA_TARGET_PACKAGE, targetPackage)
                 }
-                startActivity(authIntent)
+                startActivity(crashIntent)
             }
         }
     }

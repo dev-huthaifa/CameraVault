@@ -177,8 +177,8 @@ class SecondPhoneActivity : AppCompatActivity() {
                 null -> {}
             }
         } else {
-            // Grant temporary token so AppLock doesn't block opening from inside the vault
-            AppVaultRepository.grantTemporaryAccess(item.packageName, 120_000L)
+            // Grant session access token so AppLock allows the app to run smoothly when launched from inside the Vault
+            AppVaultRepository.grantTemporaryAccess(item.packageName, 10 * 60_000L)
             val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
             if (launchIntent != null) {
                 isLaunchingChild = true
@@ -195,11 +195,15 @@ class SecondPhoneActivity : AppCompatActivity() {
             return
         }
 
-        val lockTitle = if (item.isLockedFromOutside) "إلغاء قفل التطبيق من الخارج" else "تفعيل قفل التطبيق من الخارج 🔒"
+        val lockTitle = if (item.isLockedFromOutside) {
+            "إلغاء حظر رسالة الخطأ من الشاشة الرئيسية"
+        } else {
+            "تفعيل حظر الفتح من الشاشة الرئيسية (رسالة خطأ) 🔒"
+        }
         val options = arrayOf(
-            "تشغيل التطبيق 🚀",
+            "تشغيل التطبيق من داخل الخزنة 🚀",
             lockTitle,
-            "إزالة من الجوال الثاني 🗑️"
+            "إخراج التطبيق من الخزنة وإعادته للوضع العادي 🗑️"
         )
 
         AlertDialog.Builder(this)

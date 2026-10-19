@@ -88,7 +88,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
 
     // Pick Photos from Gallery
     private val pickPhotosLauncher = registerForActivityResult(
-        ActivityResultContracts.GetMultipleContents()
+        ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
         isPickingMedia = false
         if (uris.isNotEmpty()) {
@@ -98,7 +98,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
 
     // Pick Videos from Gallery
     private val pickVideosLauncher = registerForActivityResult(
-        ActivityResultContracts.GetMultipleContents()
+        ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
         isPickingMedia = false
         if (uris.isNotEmpty()) {
@@ -409,7 +409,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             checkStoragePermissionBeforePicker {
                 try {
                     isPickingMedia = true
-                    pickPhotosLauncher.launch("image/*")
+                    pickPhotosLauncher.launch(arrayOf("image/*"))
                 } catch (e: Exception) {
                     isPickingMedia = false
                     Toast.makeText(this, "تعذر فتح معرض الصور: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -423,7 +423,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             checkStoragePermissionBeforePicker {
                 try {
                     isPickingMedia = true
-                    pickVideosLauncher.launch("video/*")
+                    pickVideosLauncher.launch(arrayOf("video/*"))
                 } catch (e: Exception) {
                     isPickingMedia = false
                     Toast.makeText(this, "تعذر فتح استديو الفيديو: ${e.message}", Toast.LENGTH_SHORT).show()

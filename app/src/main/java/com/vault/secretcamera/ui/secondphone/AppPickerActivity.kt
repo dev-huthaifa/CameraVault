@@ -182,9 +182,31 @@ class AppPickerActivity : AppCompatActivity() {
                 isBuiltIn = false
             )
             repository.addApp(item)
+            repository.setAppLockShieldEnabled(true)
             app.isAdded = true
             adapter.notifyItemChanged(filteredApps.indexOf(app))
-            Toast.makeText(this, "تمت إضافة ${app.appName} إلى الجوال الثاني", Toast.LENGTH_SHORT).show()
+
+            if (com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)) {
+                com.vault.secretcamera.service.AppLockManager.startLockService(this)
+                Toast.makeText(
+                    this,
+                    "تم نقل ${app.appName} للخزنة وحظره من الشاشة الرئيسية برسالة خطأ تمويهية! 🔒",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("تفعيل الحظر الصارم من الشاشة الرئيسية 🔒")
+                    .setMessage("تم نقل «${app.appName}» داخل الخزنة.\nلمنعه نهائياً من الفتح في الشاشة الرئيسية وإظهار رسالة خطأ تمويهية عند النقر عليه من الخارج، يرجى منح إذن (الوصول لبيانات الاستخدام و الظهور فوق التطبيقات).")
+                    .setPositiveButton("تفعيل الآن") { _, _ ->
+                        if (!com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)) {
+                            com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
+                        } else if (!com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)) {
+                            com.vault.secretcamera.service.AppLockManager.requestOverlayPermission(this)
+                        }
+                    }
+                    .setNegativeButton("لاحقاً", null)
+                    .show()
+            }
         } else {
             repository.removeApp(app.packageName)
             app.isAdded = false

@@ -15,6 +15,16 @@ class SecretVaultApp : Application() {
         securityPreferences = SecurityPreferences(this)
         vaultRepository = VaultRepository(this, securityPreferences)
         com.vault.secretcamera.ads.AdManager.init(this)
+
+        // Auto-start AppLockService if Second Phone shield is enabled and permissions are granted
+        try {
+            val appVaultRepo = com.vault.secretcamera.data.AppVaultRepository(this)
+            if (appVaultRepo.isAppLockShieldEnabled() &&
+                com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
+            ) {
+                com.vault.secretcamera.service.AppLockManager.startLockService(this)
+            }
+        } catch (_: Exception) {}
     }
 
     companion object {
