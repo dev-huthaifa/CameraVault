@@ -213,41 +213,12 @@ class AppPickerActivity : AppCompatActivity() {
                 isBuiltIn = false
             )
             repository.addApp(item)
+            repository.setIsolatedContainerPreferred(app.packageName, false)
             repository.setAppLockShieldEnabled(true)
             app.isAdded = true
             adapter.notifyItemChanged(filteredApps.indexOf(app))
 
-            val modes = arrayOf(
-                "🗑️ إخفاء وحذف نهائي من الشاشة الرئيسية (يعمل داخل الخزنة فقط 100%)",
-                "🛡️ إبقاء الأيقونة بالخارج مع حظر فتحها نهائياً برسالة خطأ فورية (0 ثانية)"
-            )
-
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("تم نقل «${app.appName}» للخزنة 🔒 — اختر وضع الخصوصية:")
-                .setItems(modes) { _, which ->
-                    when (which) {
-                        0 -> {
-                            // Mode 1: Complete removal from Home Screen + Isolated In-Vault Engine & APK Backup
-                            repository.setIsolatedContainerPreferred(app.packageName, true)
-                            isLaunchingPermission = true
-                            Toast.makeText(
-                                this,
-                                "تم حفظ نسخة «${app.appName}» داخل الخزنة! قم بتأكيد الحذف لإخفائه من الشاشة الرئيسية نهائياً 🔒",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            com.vault.secretcamera.service.AppLockManager.uninstallAppFromHomeScreen(this, app.packageName)
-                        }
-                        1 -> {
-                            // Mode 2: Keep installed on phone but block outside launch in 0ms
-                            repository.setIsolatedContainerPreferred(app.packageName, false)
-                            ensureZeroLatencyBlockPermissions(app.appName)
-                        }
-                    }
-                }
-                .setOnCancelListener {
-                    ensureZeroLatencyBlockPermissions(app.appName)
-                }
-                .show()
+            ensureLockPermissions(app.appName)
         } else {
             repository.removeApp(app.packageName)
             app.isAdded = false
@@ -256,32 +227,24 @@ class AppPickerActivity : AppCompatActivity() {
         }
     }
 
-    private fun ensureZeroLatencyBlockPermissions(appName: String) {
-        val hasAccessibility = com.vault.secretcamera.service.AppLockManager.hasAccessibilityShieldEnabled(this)
+    private fun ensureLockPermissions(appName: String) {
         val hasUsage = com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
         val hasOverlay = com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)
 
-        if (hasUsage || hasOverlay) {
+        if (hasUsage && hasOverlay) {
             com.vault.secretcamera.service.AppLockManager.startLockService(this)
-        }
-
-        if (hasAccessibility) {
             Toast.makeText(
                 this,
-                "✅ درع الحظر الفوري (0 ثانية) نشط لـ «$appName»!",
-                Toast.LENGTH_LONG
+                "✅ تم نقل «$appName» إلى الخزنة وتأمينه بالكامل 🔒",
+                Toast.LENGTH_SHORT
             ).show()
             return
         }
 
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("تفعيل محرك الحظر الفوري (0 ثانية) 🛡️")
-            .setMessage("لمنع فتح «$appName» من الشاشة الرئيسية نهائياً في جزء من الثانية وإظهار رسالة التوقف التمويهية بدون أي تأخير، يرجى تفعيل «محرك حماية الكاميرا الذكية» من خدمات إمكانية الوصول.")
-            .setPositiveButton("تفعيل الحظر الفوري الآن") { _, _ ->
-                isLaunchingPermission = true
-                com.vault.secretcamera.service.AppLockManager.requestAccessibilityShieldPermission(this)
-            }
-            .setNeutralButton("تفعيل الحظر العادي") { _, _ ->
+            .setTitle("تفعيل درع الحماية لـ «$appName» 🔒")
+            .setMessage("لمنع فتح التطبيق من الشاشة الرئيسية وتشغيل شريط استديو الخزنة الذكي المخفي في الحافة، يرجى منح صلاحية الظهور والوصول لبيانات الاستخدام (لمرة واحدة فقط).")
+            .setPositiveButton("تفعيل الآن") { _, _ ->
                 isLaunchingPermission = true
                 pendingSecondPermissionCheck = true
                 if (!hasOverlay) {

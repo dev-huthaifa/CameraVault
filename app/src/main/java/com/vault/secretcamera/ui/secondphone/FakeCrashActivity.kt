@@ -2,27 +2,19 @@ package com.vault.secretcamera.ui.secondphone
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import com.vault.secretcamera.R
 import com.vault.secretcamera.ui.auth.AuthActivity
 
-/**
- * شاشة تمويه الأعطال القسرية (Fake System Crash Camouflage):
- * تظهر فوراً في جزء من الثانية عندما يحاول أي متطفل فتح تطبيق تم نقله إلى داخل الخزنة
- * من الشاشة الرئيسية الخارجية للهاتف!
- * - يظهر للمتطفل أن التطبيق متعطل في النظام ("التطبيق متوقف باستمرار / خطأ في النظام 0x80040111").
- * - إذا نقر على "إغلاق التطبيق" يخرج فوراً إلى شاشة الهاتف الرئيسية (Launcher) ولا يفتح التطبيق نهائياً.
- * - لصاحب الهاتف فقط: الضغط المطول على أيقونة الخطأ أو عنوان الخطأ يفتح شاشة رمز الخزنة السري.
- */
 class FakeCrashActivity : AppCompatActivity() {
 
     companion object {
@@ -52,89 +44,70 @@ class FakeCrashActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(0xD9000000.toInt())
-            setPadding(dp(28), dp(28), dp(28), dp(28))
+            setBackgroundColor(Color.parseColor("#B8000000"))
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setOnClickListener { exitToHomeLauncher() }
         }
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_card_vault)
-            setPadding(dp(24), dp(24), dp(24), dp(20))
+            setPadding(dp(24), dp(22), dp(24), dp(14))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(28).toFloat()
+                setColor(Color.parseColor("#2C2C2E"))
+            }
+            elevation = dp(20).toFloat()
+            isClickable = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        }
-
-        val headerRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val iconView = ImageView(this).apply {
-            setImageResource(android.R.drawable.stat_notify_error)
-            setColorFilter(ContextCompat.getColor(this@FakeCrashActivity, R.color.vault_accent_red))
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-                marginEnd = dp(12)
-            }
         }
 
         val titleView = TextView(this).apply {
-            text = "يتعذر تشغيل $appName"
-            setTextColor(ContextCompat.getColor(this@FakeCrashActivity, R.color.text_primary))
-            textSize = 17f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            text = "توقف تطبيق «$appName» بشكل متكرر"
+            setTextColor(Color.parseColor("#F2F2F7"))
+            textSize = 17.5f
+            setTypeface(typeface, Typeface.BOLD)
+            setLineSpacing(dp(3).toFloat(), 1f)
+            setPadding(0, 0, 0, dp(16))
+            setOnLongClickListener {
+                if (targetPackage.isNotBlank()) {
+                    val authIntent = Intent(this@FakeCrashActivity, AuthActivity::class.java).apply {
+                        putExtra(AuthActivity.EXTRA_LOCKED_PACKAGE, targetPackage)
+                    }
+                    startActivity(authIntent)
+                    finish()
+                }
+                true
+            }
         }
 
-        headerRow.addView(iconView)
-        headerRow.addView(titleView)
-
-        val messageView = TextView(this).apply {
-            text = "توقف تطبيق «$appName» بشكل غير متوقع نتيجة خطأ في ملفات التشغيل الأساسية (رمز الخطأ: ERR_PACKAGE_CORRUPTED_0x84).\n\nلا يمكن فتح هذا التطبيق حالياً."
-            setTextColor(ContextCompat.getColor(this@FakeCrashActivity, R.color.text_secondary))
-            textSize = 14f
-            setLineSpacing(dp(3).toFloat(), 1f)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp(14)
-                bottomMargin = dp(20)
-            }
+        val infoBtn = Button(this).apply {
+            text = "ⓘ    معلومات التطبيق"
+            setTextColor(Color.parseColor("#E5E5EA"))
+            setBackgroundColor(Color.TRANSPARENT)
+            textSize = 14.5f
+            isAllCaps = false
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(11), dp(4), dp(11))
+            setOnClickListener { exitToHomeLauncher() }
         }
 
         val closeBtn = Button(this).apply {
-            text = "إغلاق التطبيق"
-            setTextColor(ContextCompat.getColor(this@FakeCrashActivity, R.color.vault_bg_dark))
-            setBackgroundColor(ContextCompat.getColor(this@FakeCrashActivity, R.color.vault_accent_red))
-            textSize = 14f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(46)
-            )
-            setOnClickListener {
-                exitToHomeLauncher()
-            }
+            text = "✕    إغلاق التطبيق"
+            setTextColor(Color.parseColor("#E5E5EA"))
+            setBackgroundColor(Color.TRANSPARENT)
+            textSize = 14.5f
+            isAllCaps = false
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(11), dp(4), dp(11))
+            setOnClickListener { exitToHomeLauncher() }
         }
 
-        // Secret owner bypass: Long-pressing the error icon or header opens PIN Auth
-        val secretOwnerAction = {
-            if (targetPackage.isNotBlank()) {
-                val authIntent = Intent(this@FakeCrashActivity, AuthActivity::class.java).apply {
-                    putExtra(AuthActivity.EXTRA_LOCKED_PACKAGE, targetPackage)
-                }
-                startActivity(authIntent)
-                finish()
-            }
-            true
-        }
-        iconView.setOnLongClickListener { secretOwnerAction() }
-        titleView.setOnLongClickListener { secretOwnerAction() }
-
-        card.addView(headerRow)
-        card.addView(messageView)
+        card.addView(titleView)
+        card.addView(infoBtn)
         card.addView(closeBtn)
         root.addView(card)
 
@@ -150,7 +123,7 @@ class FakeCrashActivity : AppCompatActivity() {
     private fun exitToHomeLauncher() {
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
         }
         startActivity(homeIntent)
         finish()

@@ -63,6 +63,10 @@ class AppVaultRepository(private val context: Context) {
         fun revokeAllAccess() {
             temporaryAccessMap.clear()
         }
+
+        fun hasAnyTemporaryAccess(): Boolean {
+            return temporaryAccessMap.isNotEmpty()
+        }
     }
 
     init {

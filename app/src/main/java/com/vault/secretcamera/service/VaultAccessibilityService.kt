@@ -21,18 +21,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vault.secretcamera.data.AppVaultRepository
+import com.vault.secretcamera.ui.auth.AuthActivity
 
-/**
- * محرك الحظر الفوري على مستوى النظام (Zero-Latency Accessibility App Blocker):
- * يعمل في 0 ملي ثانية فور محاولة فتح أي تطبيق محفوظ بالخزنة من الشاشة الرئيسية:
- * 1. يلغي فتح التطبيق فوراً على مستوى النظام عبر GLOBAL_ACTION_HOME قبل ظهور أي إطار من واجهة التطبيق.
- * 2. يعرض نافذة خطأ نظام أصلية عبر TYPE_ACCESSIBILITY_OVERLAY (بدون الحاجة لأي صلاحيات إضافية).
- * 3. يمسح ألبوم «استديو الخزنة» المؤقت ويلغي تصريح الجلسة فور العودة للشاشة الرئيسية أو قفل الشاشة.
- */
 class VaultAccessibilityService : AccessibilityService() {
 
     private lateinit var appVaultRepository: AppVaultRepository
@@ -49,14 +42,12 @@ class VaultAccessibilityService : AccessibilityService() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     AppVaultRepository.revokeAllAccess()
-                    VaultStudioMountManager.unmountFromGeneralStudio(this@VaultAccessibilityService)
                 }
                 @Suppress("DEPRECATION")
                 Intent.ACTION_CLOSE_SYSTEM_DIALOGS -> {
                     val reason = intent.getStringExtra("reason") ?: ""
                     if (reason == "homekey" || reason == "recentapps" || reason == "fs_gesture") {
                         AppVaultRepository.revokeAllAccess()
-                        VaultStudioMountManager.unmountFromGeneralStudio(this@VaultAccessibilityService)
                     }
                 }
             }
@@ -95,18 +86,45 @@ class VaultAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (event == null) return
         val pkg = event.packageName?.toString() ?: return
+
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (AppVaultRepository.hasTemporaryAccess(pkg)) {
+                val clickedText = buildString {
+                    event.contentDescription?.let { append(it).append(' ') }
+                    event.text.forEach { append(it).append(' ') }
+                }.lowercase()
+                if (clickedText.contains("صور") ||
+                    clickedText.contains("معرض") ||
+                    clickedText.contains("استوديو") ||
+                    clickedText.contains("ألبوم") ||
+                    clickedText.contains("إرفاق") ||
+                    clickedText.contains("فيديو") ||
+                    clickedText.contains("photo") ||
+                    clickedText.contains("gallery") ||
+                    clickedText.contains("media") ||
+                    clickedText.contains("image") ||
+                    clickedText.contains("attach") ||
+                    clickedText.contains("album") ||
+                    clickedText.contains("camera")
+                ) {
+                    AppLockService.notifyMediaPickerDetected(this, pkg)
+                }
+            }
+            return
+        }
+
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         // Ignore our own app, SystemUI, and soft keyboards
         if (pkg == packageName || pkg == "com.android.systemui" || inputMethodPackages.contains(pkg)) {
             return
         }
 
-        // If user returned to Home Screen Launcher -> Immediately lock all apps & unmount temporary studio album!
+        // If user returned to Home Screen Launcher -> Immediately lock all apps!
         if (isHomeLauncherPackage(pkg)) {
             AppVaultRepository.revokeAllAccess()
-            VaultStudioMountManager.unmountFromGeneralStudio(this)
             return
         }
 
@@ -115,9 +133,7 @@ class VaultAccessibilityService : AccessibilityService() {
 
         if (isProtected && !hasAccess) {
             val now = System.currentTimeMillis()
-            // 1. Immediately abort the app launch back to the Home Screen in 0ms!
             performGlobalAction(GLOBAL_ACTION_HOME)
-            VaultStudioMountManager.unmountFromGeneralStudio(this)
 
             if (pkg == lastBlockedPkg && (now - lastBlockedTime) < 800L) {
                 return
@@ -125,12 +141,16 @@ class VaultAccessibilityService : AccessibilityService() {
             lastBlockedPkg = pkg
             lastBlockedTime = now
 
-            // 2. Show the native system crash dialog overlay
             showAccessibilityCrashDialog(pkg)
         } else if (appVaultRepository.isAppInVault(pkg) && hasAccess) {
             dismissOverlay()
             AppVaultRepository.grantTemporaryAccess(pkg, 15 * 60_000L)
-            VaultStudioMountManager.mountForActiveSession(this)
+            val cls = event.className?.toString()?.lowercase() ?: ""
+            if (cls.contains("gallery") || cls.contains("picker") || cls.contains("media") ||
+                cls.contains("photo") || cls.contains("composer") || cls.contains("album")
+            ) {
+                AppLockService.notifyMediaPickerDetected(this, pkg)
+            }
         }
     }
 
@@ -160,6 +180,8 @@ class VaultAccessibilityService : AccessibilityService() {
                 lower.contains("globallauncher") ||
                 lower.contains("oppo.launcher") ||
                 lower.contains("huawei.android.launcher") ||
+                lower.contains("hihonor.android.launcher") ||
+                lower.contains("nothing.launcher") ||
                 lower.contains("nexuslauncher") ||
                 lower.contains("transsion") ||
                 lower.contains("hios") ||
@@ -190,7 +212,7 @@ class VaultAccessibilityService : AccessibilityService() {
                         return super.dispatchKeyEvent(event)
                     }
                 }.apply {
-                    setBackgroundColor(Color.parseColor("#D9000000"))
+                    setBackgroundColor(Color.parseColor("#B8000000"))
                     isClickable = true
                     isFocusable = true
                     isFocusableInTouchMode = true
@@ -199,80 +221,70 @@ class VaultAccessibilityService : AccessibilityService() {
 
                 val dialogCard = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(24), dp(22), dp(24), dp(18))
+                    setPadding(dp(24), dp(22), dp(24), dp(14))
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dp(20).toFloat()
-                        setColor(Color.parseColor("#2B2D31"))
-                        setStroke(dp(1), Color.parseColor("#3F4248"))
+                        cornerRadius = dp(28).toFloat()
+                        setColor(Color.parseColor("#2C2C2E"))
                     }
-                    elevation = dp(16).toFloat()
+                    elevation = dp(20).toFloat()
                     isClickable = true
-                }
-
-                val headerRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                }
-
-                val appIconView = ImageView(this).apply {
-                    try {
-                        setImageDrawable(packageManager.getApplicationIcon(targetPkg))
-                    } catch (_: Exception) {
-                        setImageResource(android.R.drawable.sym_def_app_icon)
-                    }
-                    layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply {
-                        marginEnd = dp(14)
-                    }
                 }
 
                 val titleView = TextView(this).apply {
                     text = "توقف تطبيق «$appLabel» بشكل متكرر"
-                    setTextColor(Color.WHITE)
-                    textSize = 16f
+                    setTextColor(Color.parseColor("#F2F2F7"))
+                    textSize = 17.5f
                     setTypeface(typeface, Typeface.BOLD)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    setLineSpacing(dp(3).toFloat(), 1f)
+                    setPadding(0, 0, 0, dp(16))
+                    setOnLongClickListener {
+                        dismissOverlay()
+                        try {
+                            val authIntent = Intent(this@VaultAccessibilityService, AuthActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                putExtra(AuthActivity.EXTRA_LOCKED_PACKAGE, targetPkg)
+                            }
+                            startActivity(authIntent)
+                        } catch (_: Exception) {}
+                        true
+                    }
                 }
 
-                headerRow.addView(appIconView)
-                headerRow.addView(titleView)
-
-                val bodyView = TextView(this).apply {
-                    text = "تعذر تشغيل «$appLabel» بسبب خطأ في النظام وتلف في حزمة التشغيل (ERR_SYS_0x80040111). لا يمكن فتح هذا التطبيق."
-                    setTextColor(Color.parseColor("#B8BCC4"))
-                    textSize = 13.5f
-                    setPadding(0, dp(14), 0, dp(18))
-                }
-
-                val divider = View(this).apply {
-                    setBackgroundColor(Color.parseColor("#3E4046"))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(1)
-                    )
-                }
-
-                val closeBtn = Button(this).apply {
-                    text = "✕   إغلاق التطبيق"
-                    setTextColor(Color.parseColor("#FF6B6B"))
+                val infoBtn = Button(this).apply {
+                    text = "ⓘ    معلومات التطبيق"
+                    setTextColor(Color.parseColor("#E5E5EA"))
                     setBackgroundColor(Color.TRANSPARENT)
                     textSize = 14.5f
-                    setTypeface(typeface, Typeface.BOLD)
+                    isAllCaps = false
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    setPadding(dp(8), dp(12), dp(8), dp(10))
+                    setPadding(dp(4), dp(11), dp(4), dp(11))
                     setOnClickListener {
                         performGlobalAction(GLOBAL_ACTION_HOME)
                         dismissOverlay()
                     }
                 }
 
-                dialogCard.addView(headerRow)
-                dialogCard.addView(bodyView)
-                dialogCard.addView(divider)
+                val closeBtn = Button(this).apply {
+                    text = "✕    إغلاق التطبيق"
+                    setTextColor(Color.parseColor("#E5E5EA"))
+                    setBackgroundColor(Color.TRANSPARENT)
+                    textSize = 14.5f
+                    isAllCaps = false
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(4), dp(11), dp(4), dp(11))
+                    setOnClickListener {
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                        dismissOverlay()
+                    }
+                }
+
+                dialogCard.addView(titleView)
+                dialogCard.addView(infoBtn)
                 dialogCard.addView(closeBtn)
 
                 val cardParams = FrameLayout.LayoutParams(
-                    (resources.displayMetrics.widthPixels * 0.88).toInt(),
+                    (resources.displayMetrics.widthPixels * 0.86).toInt(),
                     FrameLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
                     gravity = Gravity.CENTER
@@ -299,9 +311,9 @@ class VaultAccessibilityService : AccessibilityService() {
 
     private fun dismissOverlay() {
         mainHandler.post {
-            val v = crashOverlayView ?: return@post
+            val view = crashOverlayView ?: return@post
             try {
-                windowManager?.removeView(v)
+                windowManager?.removeView(view)
             } catch (_: Exception) {}
             crashOverlayView = null
         }

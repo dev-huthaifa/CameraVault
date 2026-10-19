@@ -110,6 +110,7 @@ class SecondPhoneActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         if (!isFinishing && !isLaunchingChild && !isChangingConfigurations && !AdManager.isAdShowing) {
+            AppVaultRepository.revokeAllAccess()
             securityPrefs.lockVault()
             finish()
         }
@@ -145,51 +146,40 @@ class SecondPhoneActivity : AppCompatActivity() {
         if (!enabled) {
             binding.tvShieldStatus.text = "الدرع: معطل"
             binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
-        } else if (hasAccessibility) {
-            binding.tvShieldStatus.text = "الدرع الفوري (0 ثانية): نشط ومؤمّن 100% 🛡️"
-            binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
-        } else if (hasUsage && hasOverlay) {
-            binding.tvShieldStatus.text = "الدرع: نشط (اضغط لتفعيل الحظر الفوري 0 ثانية ⚡)"
+        } else if ((hasUsage && hasOverlay) || hasAccessibility) {
+            binding.tvShieldStatus.text = "الدرع: نشط ومؤمّن 100% 🛡️"
             binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_cyan))
         } else {
-            binding.tvShieldStatus.text = "⚠️ الدرع يحتاج تفعيل الحماية (اضغط هنا)"
+            binding.tvShieldStatus.text = "⚠️ الدرع يحتاج تفعيل الصلاحيات (اضغط هنا)"
             binding.tvShieldStatus.setTextColor(ContextCompat.getColor(this, R.color.vault_accent_gold))
         }
     }
 
     private fun checkPermissionsAndStartService() {
-        val hasAccessibility = AppLockManager.hasAccessibilityShieldEnabled(this)
         val hasUsage = AppLockManager.hasUsageStatsPermission(this)
         val hasOverlay = AppLockManager.hasOverlayPermission(this)
 
-        if (hasUsage || hasOverlay) {
-            AppLockManager.startLockService(this)
-        }
-
-        if (!hasAccessibility) {
-            AlertDialog.Builder(this)
-                .setTitle("تفعيل محرك الحظر الفوري (0 ثانية) 🛡️")
-                .setMessage("لمنع فتح أي تطبيق من الشاشة الرئيسية في 0 جزء من الثانية (قبل ظهور أي شاشة منه) وإظهار رسالة التوقف الفورية:\n\nيرجى تفعيل «محرك حماية الكاميرا الذكية» من خدمات إمكانية الوصول، أو يمكنك حذف التطبيق من الشاشة الرئيسية وتشغيله داخل الخزنة فقط!")
-                .setPositiveButton("تفعيل الحظر الفوري (الأقوى)") { _, _ ->
-                    isLaunchingChild = true
-                    AppLockManager.requestAccessibilityShieldPermission(this)
-                }
-                .setNeutralButton("صلاحيات الحظر البديلة") { _, _ ->
-                    isLaunchingChild = true
-                    pendingPermissionChain = true
-                    if (!hasOverlay) {
-                        AppLockManager.requestOverlayPermission(this)
-                    } else if (!hasUsage) {
-                        AppLockManager.requestUsageStatsPermission(this)
-                    }
-                }
-                .setNegativeButton("إلغاء", null)
-                .show()
-        } else {
+        if (hasUsage && hasOverlay) {
             AppLockManager.startLockService(this)
             updateShieldUI()
-            Toast.makeText(this, "✅ محرك الحظر الفوري (0 ثانية) نشط بأعلى كفاءة!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "✅ درع قفل التطبيقات وشريط الحافة الذكي نشط 100%!", Toast.LENGTH_SHORT).show()
+            return
         }
+
+        AlertDialog.Builder(this)
+            .setTitle("تفعيل درع الحماية الفوري 🛡️")
+            .setMessage("لتشغيل حظر التطبيقات الصارم من الشاشة الرئيسية وتفعيل مقبض «استديو الخزنة» المخفي في حافة الشاشة، يرجى تفعيل الصلاحيتين التاليتين:")
+            .setPositiveButton("تفعيل الآن") { _, _ ->
+                isLaunchingChild = true
+                pendingPermissionChain = true
+                if (!hasOverlay) {
+                    AppLockManager.requestOverlayPermission(this)
+                } else if (!hasUsage) {
+                    AppLockManager.requestUsageStatsPermission(this)
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
 
     private fun setupRecyclerView() {
@@ -228,69 +218,48 @@ class SecondPhoneActivity : AppCompatActivity() {
         }
 
         val isInstalledOutside = AppLockManager.isPackageInstalledOnPhone(this, item.packageName)
-        val isolatedUrl = VaultIsolatedAppActivity.resolveIsolatedAppUrl(item.packageName, item.appName)
 
-        // 1. If the app was deleted from the Home Screen (100% hidden) OR user prefers Isolated Container:
-        if (!isInstalledOutside || repository.isIsolatedContainerPreferred(item.packageName)) {
-            if (isolatedUrl != null) {
-                launchInIsolatedContainer(item)
-                return
-            } else if (!isInstalledOutside) {
-                // App is not installed outside and is an offline APK -> offer to restore from Vault APK backup or open isolated
-                val backupApk = repository.getBackedUpApkFile(item.packageName)
-                if (backupApk != null) {
-                    AlertDialog.Builder(this)
-                        .setTitle("تشغيل «${item.appName}» المحفوظ بالخزنة 📦")
-                        .setMessage("هذا التطبيق محذوف تماماً من الشاشة الرئيسية ومن نظام الهاتف الخارجي لخصوصيتك.\nيمكنك تشغيله عبر المتصفح المعزول أو استعادة تثبيته من النسخة المشفرة المحفوظة داخل الخزنة.")
-                        .setPositiveButton("استعادة وتثبيت النسخة المحفوظة") { _, _ ->
-                            installBackedUpApk(backupApk)
-                        }
-                        .setNeutralButton("فتح في المحرك المعزول") { _, _ ->
-                            launchInIsolatedContainer(item)
-                        }
-                        .setNegativeButton("إلغاء", null)
-                        .show()
-                } else {
-                    launchInIsolatedContainer(item)
-                }
-                return
-            }
-        }
+        // If native app is installed on the phone, launch it directly (unless user explicitly chose isolated container)
+        if (isInstalledOutside && !repository.isIsolatedContainerPreferred(item.packageName)) {
+            val hasOverlay = AppLockManager.hasOverlayPermission(this)
+            val hasUsage = AppLockManager.hasUsageStatsPermission(this)
 
-        // 2. Native app is installed on the phone: check if shield protection is active
-        val hasAccessibility = AppLockManager.hasAccessibilityShieldEnabled(this)
-        val hasOverlay = AppLockManager.hasOverlayPermission(this)
-        val hasUsage = AppLockManager.hasUsageStatsPermission(this)
-
-        if (!hasAccessibility && (!hasOverlay || !hasUsage)) {
-            val choices = arrayOf(
-                "🗑️ حذف التطبيق من الشاشة الرئيسية وتشغيله داخل الخزنة فقط (إخفاء 100%)",
-                "🛡️ تفعيل محرك الحظر الفوري (0 ثانية) لمنع فتحه من الشاشة الرئيسية",
-                "🚀 فتح التطبيق الآن (مع دمج ألبوم استديو الخزنة)"
-            )
-            AlertDialog.Builder(this)
-                .setTitle("حماية وخصوصية «${item.appName}» 🔒")
-                .setItems(choices) { _, which ->
-                    when (which) {
-                        0 -> {
-                            repository.setIsolatedContainerPreferred(item.packageName, true)
-                            isLaunchingChild = true
-                            AppLockManager.uninstallAppFromHomeScreen(this, item.packageName)
-                        }
-                        1 -> {
-                            isLaunchingChild = true
-                            AppLockManager.requestAccessibilityShieldPermission(this)
-                        }
-                        2 -> {
-                            launchProtectedAppNow(item)
+            if (!hasOverlay || !hasUsage) {
+                AlertDialog.Builder(this)
+                    .setTitle("تفعيل درع الحماية وشريط الحافة المخفي 🔒")
+                    .setMessage("قبل فتح «${item.appName}»، يرجى تفعيل صلاحية الظهور والوصول للاستخدام لضمان قفل التطبيق فور الخروج منه وتفعيل شريط «استديو الخزنة» المخفي في حافة الشاشة.")
+                    .setPositiveButton("تفعيل الصلاحيات الآن") { _, _ ->
+                        isLaunchingChild = true
+                        pendingPermissionChain = true
+                        if (!hasOverlay) {
+                            AppLockManager.requestOverlayPermission(this)
+                        } else {
+                            AppLockManager.requestUsageStatsPermission(this)
                         }
                     }
-                }
-                .show()
+                    .setNeutralButton("فتح التطبيق مباشرة") { _, _ ->
+                        launchProtectedAppNow(item)
+                    }
+                    .show()
+                return
+            }
+
+            launchProtectedAppNow(item)
             return
         }
 
-        launchProtectedAppNow(item)
+        // If app was uninstalled from outside phone or isolated container was explicitly selected:
+        val isolatedUrl = VaultIsolatedAppActivity.resolveIsolatedAppUrl(item.packageName, item.appName)
+        if (isolatedUrl != null) {
+            launchInIsolatedContainer(item)
+        } else {
+            val backupApk = repository.getBackedUpApkFile(item.packageName)
+            if (backupApk != null) {
+                installBackedUpApk(backupApk)
+            } else {
+                launchInIsolatedContainer(item)
+            }
+        }
     }
 
     private fun launchInIsolatedContainer(item: AppVaultItem) {
@@ -321,9 +290,7 @@ class SecondPhoneActivity : AppCompatActivity() {
     }
 
     private fun launchProtectedAppNow(item: AppVaultItem) {
-        // Grant session access token and automatically mount the native "استديو الخزنة" album inside the General Studio!
         AppVaultRepository.grantTemporaryAccess(item.packageName, 15 * 60_000L)
-        com.vault.secretcamera.service.VaultStudioMountManager.mountForActiveSession(this)
         AppLockManager.notifyAppLaunchedFromVault(this, item.packageName)
 
         val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
@@ -331,7 +298,6 @@ class SecondPhoneActivity : AppCompatActivity() {
             isLaunchingChild = true
             startActivity(launchIntent)
         } else {
-            // If native app was uninstalled from the Home Screen, open it seamlessly in the Isolated Container!
             launchInIsolatedContainer(item)
         }
     }
