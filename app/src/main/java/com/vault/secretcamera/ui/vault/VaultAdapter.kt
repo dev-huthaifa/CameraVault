@@ -41,6 +41,18 @@ class VaultAdapter(
 
     fun getSelectedItems(): List<VaultItem> = items.filter { it.isSelected }
 
+    fun selectAll() {
+        if (items.isEmpty()) return
+        isSelectionMode = true
+        val allSelected = items.all { it.isSelected }
+        items.forEach { it.isSelected = !allSelected }
+        if (items.none { it.isSelected }) {
+            isSelectionMode = false
+        }
+        notifyDataSetChanged()
+        onSelectionChanged(getSelectedItems().size)
+    }
+
     fun clearSelection() {
         isSelectionMode = false
         items.forEach { it.isSelected = false }

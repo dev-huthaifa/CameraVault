@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vault.secretcamera.R
+import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.data.AppVaultRepository
 import com.vault.secretcamera.databinding.ActivityAppPickerBinding
 import com.vault.secretcamera.databinding.ItemAppPickerBinding
@@ -44,6 +46,19 @@ class AppPickerActivity : AppCompatActivity() {
         binding = ActivityAppPickerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        val app = application as SecretVaultApp
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+            return
+        }
+
+        if (app.securityPreferences.isAntiScreenshotEnabled) {
+            window.setFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                android.view.WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
+
         repository = AppVaultRepository(this)
 
         binding.pickerToolbar.setNavigationOnClickListener {
@@ -53,6 +68,23 @@ class AppPickerActivity : AppCompatActivity() {
         setupRecyclerView()
         setupSearch()
         loadInstalledApps()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val app = application as SecretVaultApp
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val app = application as SecretVaultApp
+        if (!isFinishing && !isChangingConfigurations && !AdManager.isAdShowing) {
+            app.securityPreferences.lockVault()
+            finish()
+        }
     }
 
     private fun setupRecyclerView() {

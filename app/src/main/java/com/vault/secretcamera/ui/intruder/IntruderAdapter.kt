@@ -2,7 +2,6 @@ package com.vault.secretcamera.ui.intruder
 
 import android.graphics.BitmapFactory
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.vault.secretcamera.R
@@ -15,6 +14,7 @@ import java.util.Locale
 
 class IntruderAdapter(
     private val repository: VaultRepository,
+    private val onItemClick: (IntruderLog) -> Unit = {},
     private val onDeleteClick: (IntruderLog) -> Unit
 ) : RecyclerView.Adapter<IntruderAdapter.ViewHolder>() {
 
@@ -57,6 +57,10 @@ class IntruderAdapter(
                 }
             } else {
                 binding.ivIntruderPhoto.setImageResource(R.drawable.ic_vault_lock)
+            }
+
+            binding.root.setOnClickListener {
+                onItemClick(log)
             }
 
             binding.btnDeleteIntruder.setOnClickListener {

@@ -14,43 +14,82 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vault.secretcamera.R
+import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.data.AppVaultRepository
 import com.vault.secretcamera.databinding.ActivitySecondPhoneBinding
 import com.vault.secretcamera.databinding.ItemSecondPhoneAppBinding
 import com.vault.secretcamera.model.AppVaultItem
 import com.vault.secretcamera.model.BuiltInAppType
+import com.vault.secretcamera.security.SecurityPreferences
 import com.vault.secretcamera.service.AppLockManager
 
 class SecondPhoneActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySecondPhoneBinding
     private lateinit var repository: AppVaultRepository
+    private lateinit var securityPrefs: SecurityPreferences
     private val appItems = mutableListOf<AppVaultItem>()
     private lateinit var adapter: SecondPhoneGridAdapter
+    private var isLaunchingChild = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySecondPhoneBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        val app = application as SecretVaultApp
+        securityPrefs = app.securityPreferences
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+            return
+        }
+
+        if (securityPrefs.isAntiScreenshotEnabled) {
+            window.setFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                android.view.WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
+
         repository = AppVaultRepository(this)
 
         binding.secondPhoneToolbar.setNavigationOnClickListener {
-            finish()
+            AdManager.showInterstitial(this) {
+                finish()
+            }
         }
 
         setupShieldToggle()
         setupRecyclerView()
 
         binding.fabAddApps.setOnClickListener {
+            isLaunchingChild = true
             startActivity(Intent(this, AppPickerActivity::class.java))
         }
+
+        AdManager.loadBanner(this, binding.adBannerSecondPhoneContainer)
+        AdManager.loadInterstitial(this)
     }
 
     override fun onResume() {
         super.onResume()
+        if (!securityPrefs.isUnlocked()) {
+            finish()
+            return
+        }
+        isLaunchingChild = false
         loadApps()
         updateShieldUI()
+        AdManager.loadBanner(this, binding.adBannerSecondPhoneContainer)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing && !isLaunchingChild && !isChangingConfigurations && !AdManager.isAdShowing) {
+            securityPrefs.lockVault()
+            finish()
+        }
     }
 
     private fun setupShieldToggle() {
@@ -90,6 +129,7 @@ class SecondPhoneActivity : AppCompatActivity() {
                 .setTitle("صلاحيات درع الحماية 🔒")
                 .setMessage("لتأمين وقفل التطبيقات من خارج الخزنة بنجاح، يحتاج التطبيق إلى صلاحيتي (الوصول لبيانات الاستخدام) و(الظهور فوق التطبيقات).\nهل تريد تفعيلها الآن؟")
                 .setPositiveButton("تفعيل الصلاحيات") { _, _ ->
+                    isLaunchingChild = true
                     if (!hasUsage) {
                         AppLockManager.requestUsageStatsPermission(this)
                     } else if (!hasOverlay) {
@@ -124,9 +164,11 @@ class SecondPhoneActivity : AppCompatActivity() {
         if (item.isBuiltIn) {
             when (item.builtInType) {
                 BuiltInAppType.SECRET_BROWSER -> {
+                    isLaunchingChild = true
                     startActivity(Intent(this, SecretBrowserActivity::class.java))
                 }
                 BuiltInAppType.SECRET_NOTES -> {
+                    isLaunchingChild = true
                     startActivity(Intent(this, SecretNotesActivity::class.java))
                 }
                 BuiltInAppType.VAULT_STUDIO -> {
@@ -139,6 +181,7 @@ class SecondPhoneActivity : AppCompatActivity() {
             AppVaultRepository.grantTemporaryAccess(item.packageName, 120_000L)
             val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
             if (launchIntent != null) {
+                isLaunchingChild = true
                 startActivity(launchIntent)
             } else {
                 Toast.makeText(this, "تعذر تشغيل التطبيق (قد يكون تم إلغاء تثبيته)", Toast.LENGTH_SHORT).show()

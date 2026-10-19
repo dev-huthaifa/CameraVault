@@ -153,7 +153,14 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
                     withContext(Dispatchers.Main) {
                         binding.progressBarViewer.visibility = View.GONE
                         if (bytes != null) {
-                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                            var sample = 1
+                            while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) {
+                                sample *= 2
+                            }
+                            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                             binding.ivFullImage.setImageBitmap(bitmap)
                             binding.ivFullImage.visibility = View.VISIBLE
                         } else {
@@ -162,7 +169,7 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
 
-                VaultCategory.VIDEOS -> {
+                VaultCategory.VIDEOS, VaultCategory.AUDIO -> {
                     tempVideoFile = repository.getTempDecryptedVideo(item)
                     withContext(Dispatchers.Main) {
                         binding.progressBarViewer.visibility = View.GONE
@@ -295,7 +302,8 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onStop() {
         super.onStop()
-        if (!isSharing && !isChangingConfigurations && !AdManager.isAdShowing) {
+        // Never lock vault when finishing (returning to VaultActivity)!
+        if (!isFinishing && !isSharing && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }
@@ -303,7 +311,12 @@ class MediaViewerActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        tempVideoFile?.delete()
+        tempVideoFile?.let { file ->
+            if (securityPrefs.isDataShreddingEnabled) {
+                repository.shredFileContent(file)
+            }
+            file.delete()
+        }
     }
 
     companion object {

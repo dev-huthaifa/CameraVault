@@ -672,11 +672,19 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="16dp"
                 android:gravity="center"
                 android:text="@string/developer_rights"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
+
+            <!-- Commercial Banner Ad Container -->
+            <FrameLayout
+                android:id="@+id/adBannerSettingsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="50dp"
+                android:layout_marginBottom="16dp" />
 
         </LinearLayout>
     </LinearLayout>

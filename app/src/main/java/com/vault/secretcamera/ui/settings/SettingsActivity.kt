@@ -51,6 +51,8 @@ class SettingsActivity : AppCompatActivity() {
         setupGestureSettings()
         setupDeveloperSettings()
         updateManageFilesPermissionUI()
+        AdManager.loadBanner(this, binding.adBannerSettingsContainer)
+        AdManager.loadInterstitial(this)
     }
 
     override fun onResume() {
@@ -61,11 +63,13 @@ class SettingsActivity : AppCompatActivity() {
         }
         isLaunchingPermission = false
         updateManageFilesPermissionUI()
+        AdManager.loadBanner(this, binding.adBannerSettingsContainer)
     }
 
     override fun onStop() {
         super.onStop()
-        if (!isLaunchingPermission && !isChangingConfigurations && !AdManager.isAdShowing) {
+        // Never lock vault when finishing (returning to VaultActivity)!
+        if (!isFinishing && !isLaunchingPermission && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }
@@ -75,7 +79,9 @@ class SettingsActivity : AppCompatActivity() {
         setSupportActionBar(binding.settingsToolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.settingsToolbar.setNavigationOnClickListener {
-            finish()
+            AdManager.showInterstitial(this) {
+                finish()
+            }
         }
     }
 

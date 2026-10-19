@@ -1,0 +1,32 @@
+# ========================================================
+# app-ads.txt for Huthaifa Aref (dev-huthaifa)
+# Unity Monetization Organization Core ID: 18968513356872
+# Google AdMob Publisher ID: pub-7678260783182264
+# ========================================================
+
+# Unity Ads (Direct)
+unityads.com, 18968513356872, DIRECT, 24424e4853da21e5
+
+# Google AdMob (Direct)
+google.com, pub-7678260783182264, DIRECT, f08c47fec0942fa0
+
+# Unity Monetization Authorized Sellers & Resellers
+smaato.com, 1100058938, RESELLER, 07bcf65f187117b4
+smaato.com, 1100059345, RESELLER, 07bcf65f187117b4
+smaato.com, 1100059563, RESELLER, 07bcf65f187117b4
+smartadserver.com, 3964, RESELLER
+smartadserver.com, 4456, RESELLER
+smartadserver.com, 4525, RESELLER, 060d053dcf45cbf3
+smartadserver.com, 4578, RESELLER, 060d053dcf45cbf3
+smartadserver.com, 4610, RESELLER, 060d053dcf45cbf3
+smartadserver.com, 4625, RESELLER, 060d053dcf45cbf3
+smartadserver.com, 5294, RESELLER, 060d053dcf45cbf3
+smartadserver.com, 5828, RESELLER, 060d053dcf45cbf3
+smartclip.net, 14679, RESELLER
+applovin.com, 18968513356872, RESELLER
+inmobi.com, 18968513356872, RESELLER
+ironsrc.com, 18968513356872, RESELLER
+rubiconproject.com, 18968513356872, RESELLER, 0bfd66d529a55803
+pubmatic.com, 18968513356872, RESELLER, 5d62e9ddbf34a070
+openx.com, 18968513356872, RESELLER, 6a698e2687a0931e
+indexexchange.com, 18968513356872, RESELLER, 50b1c356f2c5c849

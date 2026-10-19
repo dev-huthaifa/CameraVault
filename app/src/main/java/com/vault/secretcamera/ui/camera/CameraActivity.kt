@@ -338,7 +338,34 @@ class CameraActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private var isCountingDown = false
+
     private fun takePhoto() {
+        if (isCountingDown) return
+        val cameraPrefs = getSharedPreferences("camera_prefs", MODE_PRIVATE)
+        val timerSeconds = if (isSecretCaptureMode) 0 else cameraPrefs.getInt("pref_timer", 0)
+
+        if (timerSeconds > 0) {
+            isCountingDown = true
+            val originalModeText = binding.tvCameraMode.text.toString()
+            object : android.os.CountDownTimer(timerSeconds * 1000L, 1000L) {
+                override fun onTick(millisUntilFinished: Long) {
+                    val sec = (millisUntilFinished / 1000L) + 1
+                    binding.tvCameraMode.text = "⏱️ $sec..."
+                }
+
+                override fun onFinish() {
+                    isCountingDown = false
+                    binding.tvCameraMode.text = originalModeText
+                    executePhotoCapture()
+                }
+            }.start()
+        } else {
+            executePhotoCapture()
+        }
+    }
+
+    private fun executePhotoCapture() {
         val capture = imageCapture ?: return
 
         // Play shutter sound if enabled in camera settings
@@ -397,12 +424,20 @@ class CameraActivity : AppCompatActivity() {
                     override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                         Toast.makeText(this@CameraActivity, R.string.photo_saved, Toast.LENGTH_SHORT).show()
                         outputFileResults.savedUri?.let { uri ->
-                            try {
-                                contentResolver.openInputStream(uri)?.use { stream ->
-                                    val bmp = BitmapFactory.decodeStream(stream)
-                                    binding.ivGalleryThumbnail.setImageBitmap(bmp)
-                                }
-                            } catch (_: Exception) {}
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                                    val bmp = contentResolver.openInputStream(uri)?.use { stream ->
+                                        BitmapFactory.decodeStream(stream, null, opts)
+                                    }
+                                    if (bmp != null) {
+                                        runOnUiThread {
+                                            binding.ivGalleryThumbnail.clearColorFilter()
+                                            binding.ivGalleryThumbnail.setImageBitmap(bmp)
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
 

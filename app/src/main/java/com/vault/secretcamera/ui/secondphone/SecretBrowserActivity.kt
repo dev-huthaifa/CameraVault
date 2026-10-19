@@ -18,13 +18,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.data.VaultRepository
 import com.vault.secretcamera.databinding.ActivitySecretBrowserBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -44,6 +44,11 @@ class SecretBrowserActivity : AppCompatActivity() {
         val app = application as SecretVaultApp
         repository = app.vaultRepository
 
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+            return
+        }
+
         if (app.securityPreferences.isAntiScreenshotEnabled) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
@@ -53,8 +58,29 @@ class SecretBrowserActivity : AppCompatActivity() {
 
         setupToolbar()
         setupWebView()
+        AdManager.loadBanner(this, binding.adBannerBrowserContainer)
+        AdManager.loadInterstitial(this)
 
         binding.secretWebView.loadUrl(homeUrl)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val app = application as SecretVaultApp
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+            return
+        }
+        AdManager.loadBanner(this, binding.adBannerBrowserContainer)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val app = application as SecretVaultApp
+        if (!isFinishing && !isChangingConfigurations && !AdManager.isAdShowing) {
+            app.securityPreferences.lockVault()
+            finish()
+        }
     }
 
     private fun setupToolbar() {
@@ -62,7 +88,9 @@ class SecretBrowserActivity : AppCompatActivity() {
             if (binding.secretWebView.canGoBack()) {
                 binding.secretWebView.goBack()
             } else {
-                finish()
+                AdManager.showInterstitial(this) {
+                    finish()
+                }
             }
         }
 

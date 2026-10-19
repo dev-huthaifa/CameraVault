@@ -73,6 +73,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             Toast.makeText(this, "تم حفظ الملفات وتشفيرها في الخزنة", Toast.LENGTH_SHORT).show()
         }
         loadItems()
+        AdManager.showInterstitial(this, force = false)
     }
 
     // Permission launcher for Manage All Files Access (Android 11+)
@@ -162,10 +163,10 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         isPickingMedia = false
+        binding.tvDecoyBadge.visibility = if (securityPrefs.isDecoySession) View.VISIBLE else View.GONE
         loadItems()
         AdManager.loadBanner(this, binding.adBannerContainer)
         AdManager.loadInterstitial(this)
-        AdManager.autoShow(this, delayMs = 800L, force = false)
 
         if (securityPrefs.isFlipToLockEnabled) {
             accelerometer?.let {
@@ -185,8 +186,8 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
     override fun onStop() {
         super.onStop()
         // Auto-lock and exit to Camera if user backgrounds the app,
-        // but guard against interstitial ads and media pickers taking foreground.
-        if (!isPickingMedia && !isChangingConfigurations && !AdManager.isAdShowing) {
+        // but guard against interstitial ads and internal child activities/pickers taking foreground.
+        if (!isFinishing && !isPickingMedia && !isChangingConfigurations && !AdManager.isAdShowing) {
             securityPrefs.lockVault()
             finish()
         }
@@ -202,10 +203,6 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             isProximityNear = distance < 4.0f && distance < maxRange
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             val z = event.values[2]
-            // True flip face down:
-            // Either phone is facing downward on a surface (z < -5.0f && isProximityNear),
-            // or phone is placed flat face-down (z < -8.5f).
-            // This prevents accidental locks when looking up at the screen in bed.
             val isFlipped = (z < -5.0f && isProximityNear) || (z < -8.5f)
             if (isFlipped) {
                 val now = System.currentTimeMillis()
@@ -301,7 +298,7 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             onSelectionChanged = { count ->
                 if (count > 0) {
                     binding.selectionActionBar.visibility = View.VISIBLE
-                    binding.tvSelectionCount.text = "$count محددة"
+                    binding.tvSelectionCount.text = "$count محددة (تحديد الكل)"
                     binding.fabAdd.hide()
                 } else {
                     binding.selectionActionBar.visibility = View.GONE
@@ -324,6 +321,11 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
     private fun setupActions() {
         binding.fabAdd.setOnClickListener {
             showAddOptionsDialog()
+        }
+
+        // Tap selection counter to toggle Select All / Deselect All
+        binding.tvSelectionCount.setOnClickListener {
+            adapter.selectAll()
         }
 
         // Direct Secure Share (WhatsApp, Instagram, etc.)
@@ -480,9 +482,9 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
             withContext(Dispatchers.Main) {
                 try { progressDialog.dismiss() } catch (_: Exception) {}
                 loadItems()
-                AdManager.showInterstitial(this@VaultActivity, force = false)
 
-                // If Scoped Storage requires system consent dialog to permanently delete from Gallery & Trash
+                // If Scoped Storage requires system consent dialog to permanently delete from Gallery & Trash,
+                // launch the system delete request first and show interstitial after confirmation!
                 if (result.pendingDeleteUris.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
                         isPickingMedia = true
@@ -497,19 +499,23 @@ class VaultActivity : AppCompatActivity(), SensorEventListener {
                             "تم بنجاح تشفير وحفظ ${result.successCount} ملفات في الخزنة!",
                             Toast.LENGTH_LONG
                         ).show()
+                        AdManager.showInterstitial(this@VaultActivity, force = false)
                     }
-                } else if (result.directlyDeletedCount > 0) {
-                    Toast.makeText(
-                        this@VaultActivity,
-                        "تم بنجاح تشفير وحفظ ${result.successCount} ملفات وحذفها نهائياً من المعرض وسلة المهملات!",
-                        Toast.LENGTH_LONG
-                    ).show()
                 } else {
-                    Toast.makeText(
-                        this@VaultActivity,
-                        "تم تشفير وحفظ ${result.successCount} ملفات في الخزنة بنجاح!",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    if (result.directlyDeletedCount > 0) {
+                        Toast.makeText(
+                            this@VaultActivity,
+                            "تم بنجاح تشفير وحفظ ${result.successCount} ملفات وحذفها نهائياً من المعرض وسلة المهملات!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this@VaultActivity,
+                            "تم تشفير وحفظ ${result.successCount} ملفات في الخزنة بنجاح!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    AdManager.showInterstitial(this@VaultActivity, force = false)
                 }
             }
         }

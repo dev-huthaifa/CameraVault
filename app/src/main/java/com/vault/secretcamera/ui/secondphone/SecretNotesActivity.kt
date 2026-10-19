@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vault.secretcamera.SecretVaultApp
+import com.vault.secretcamera.ads.AdManager
 import com.vault.secretcamera.databinding.ActivitySecretNotesBinding
 import com.vault.secretcamera.databinding.ItemSecretNoteBinding
 import com.vault.secretcamera.security.CryptoManager
@@ -52,6 +53,11 @@ class SecretNotesActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         val app = application as SecretVaultApp
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+            return
+        }
+
         if (app.securityPreferences.isAntiScreenshotEnabled) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
@@ -63,11 +69,34 @@ class SecretNotesActivity : AppCompatActivity() {
         setupRecyclerView()
         setupBackPress()
         loadNotes()
+        AdManager.loadBanner(this, binding.adBannerNotesContainer)
+        AdManager.loadInterstitial(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val app = application as SecretVaultApp
+        if (!app.securityPreferences.isUnlocked()) {
+            finish()
+            return
+        }
+        AdManager.loadBanner(this, binding.adBannerNotesContainer)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val app = application as SecretVaultApp
+        if (!isFinishing && !isChangingConfigurations && !AdManager.isAdShowing) {
+            app.securityPreferences.lockVault()
+            finish()
+        }
     }
 
     private fun setupToolbars() {
         binding.notesToolbar.setNavigationOnClickListener {
-            finish()
+            AdManager.showInterstitial(this) {
+                finish()
+            }
         }
 
         binding.btnAddNote.setOnClickListener {
@@ -93,7 +122,9 @@ class SecretNotesActivity : AppCompatActivity() {
                 if (binding.layoutNoteEditor.visibility == View.VISIBLE) {
                     closeEditor()
                 } else {
-                    finish()
+                    AdManager.showInterstitial(this@SecretNotesActivity) {
+                        finish()
+                    }
                 }
             }
         })

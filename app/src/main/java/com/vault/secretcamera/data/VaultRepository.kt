@@ -1043,7 +1043,10 @@ class VaultRepository(
     }
 
     // Intruder selfie management
-    suspend fun saveIntruderPhoto(jpegBytes: ByteArray): IntruderLog = withContext(Dispatchers.IO) {
+    suspend fun saveIntruderPhoto(
+        jpegBytes: ByteArray,
+        reason: String = "محاولة إدخال خاطئة للرمز السري"
+    ): IntruderLog = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val photoFile = File(intrudersDir, "intruder_$id.jpg")
         FileOutputStream(photoFile).use { fos ->
@@ -1053,7 +1056,8 @@ class VaultRepository(
         val log = IntruderLog(
             id = id,
             photoFileName = photoFile.name,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            reason = reason
         )
         intrudersList.add(0, log)
         saveIntrudersIndex()

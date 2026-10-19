@@ -139,4 +139,12 @@
 
     </FrameLayout>
 
+    <!-- Commercial Banner Ad Container -->
+    <FrameLayout
+        android:id="@+id/adBannerSecondPhoneContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="50dp"
+        android:background="@color/vault_surface_dark" />
+
 </LinearLayout>

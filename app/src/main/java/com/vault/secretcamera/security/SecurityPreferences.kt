@@ -5,13 +5,17 @@ import android.content.SharedPreferences
 import android.util.Base64
 import java.security.MessageDigest
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 class SecurityPreferences(private val context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("vault_security_prefs", Context.MODE_PRIVATE)
 
+    @Volatile
     var currentMasterKey: SecretKey? = null
+
+    @Volatile
     var isDecoySession: Boolean = false
 
     // Master PIN setup check
@@ -19,7 +23,7 @@ class SecurityPreferences(private val context: Context) {
         return prefs.contains(KEY_PIN_HASH)
     }
 
-    // Normalize digits (supports Arabic numerals ٠-٩ and English 0-9)
+    // Normalize digits (supports Arabic numerals ٠-٩ and Persian ۰-۹ and English 0-9)
     fun normalizePin(pin: String): String {
         return pin.trim().map { ch ->
             when (ch) {
@@ -38,13 +42,18 @@ class SecurityPreferences(private val context: Context) {
         val saltStr = Base64.encodeToString(salt, Base64.NO_WRAP)
         val hashStr = Base64.encodeToString(hash, Base64.NO_WRAP)
 
+        // Prepare session key and persist encoded key material for Biometric unlock
+        val derivedKey = CryptoManager.deriveKey(norm, salt)
+        val keyBackupStr = Base64.encodeToString(derivedKey.encoded, Base64.NO_WRAP)
+
         prefs.edit()
             .putString(KEY_PIN_SALT, saltStr)
             .putString(KEY_PIN_HASH, hashStr)
+            .putString(KEY_BIOMETRIC_MASTER_KEY, keyBackupStr)
             .apply()
 
-        // Prepare session key
-        currentMasterKey = CryptoManager.deriveKey(norm, salt)
+        currentMasterKey = derivedKey
+        isDecoySession = false
     }
 
     // Verify Master PIN
@@ -59,11 +68,34 @@ class SecurityPreferences(private val context: Context) {
 
         val matches = MessageDigest.isEqual(expectedHash, actualHash)
         if (matches) {
-            currentMasterKey = CryptoManager.deriveKey(norm, salt)
+            val derivedKey = CryptoManager.deriveKey(norm, salt)
+            currentMasterKey = derivedKey
             isDecoySession = false
             resetFailedAttempts()
+
+            // Ensure biometric key backup is always up-to-date
+            if (!prefs.contains(KEY_BIOMETRIC_MASTER_KEY)) {
+                val keyBackupStr = Base64.encodeToString(derivedKey.encoded, Base64.NO_WRAP)
+                prefs.edit().putString(KEY_BIOMETRIC_MASTER_KEY, keyBackupStr).apply()
+            }
         }
         return matches
+    }
+
+    /**
+     * Restores the Master Key session upon hardware BiometricPrompt authentication success.
+     */
+    fun unlockWithBiometric(): Boolean {
+        val keyBackupStr = prefs.getString(KEY_BIOMETRIC_MASTER_KEY, null) ?: return false
+        return try {
+            val keyBytes = Base64.decode(keyBackupStr, Base64.NO_WRAP)
+            currentMasterKey = SecretKeySpec(keyBytes, "AES")
+            isDecoySession = false
+            resetFailedAttempts()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     // Decoy (Fake) PIN setup
@@ -172,6 +204,7 @@ class SecurityPreferences(private val context: Context) {
 
         private const val KEY_PIN_HASH = "pin_hash"
         private const val KEY_PIN_SALT = "pin_salt"
+        private const val KEY_BIOMETRIC_MASTER_KEY = "biometric_master_key"
         private const val KEY_DECOY_HASH = "decoy_hash"
         private const val KEY_DECOY_SALT = "decoy_salt"
         private const val KEY_ANTI_SCREENSHOT = "anti_screenshot"
