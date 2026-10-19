@@ -2,9 +2,14 @@ package com.vault.secretcamera.ui.secondphone
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.Intent
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.text.format.Formatter
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -18,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -32,6 +38,8 @@ import com.vault.secretcamera.databinding.ItemVaultListBinding
 import com.vault.secretcamera.model.VaultCategory
 import com.vault.secretcamera.model.VaultItem
 import com.vault.secretcamera.security.SecurityPreferences
+import com.vault.secretcamera.service.AppLockManager
+import com.vault.secretcamera.service.AppLockService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,29 +51,32 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * معرض استديو الخزنة المباشر (Vault Gallery Picker Interceptor):
- * يُفتح تلقائياً عندما يضغط المستخدم على زر إرفاق صورة أو فيديو أو ملف من داخل تطبيقات الجوال الثاني
- * (مثل منصة X / تويتر، إنستغرام، واتساب، تيليجرام، سناب شات، وغيرها).
- *
- * يوفر قانوناً صارماً يمنع التداخل:
- * 1. يعرض صور وفيديوهات وملفات الخزنة المشفرة مباشرة (مع فك تشفير لحظي آمن للتطبيق الطالب فقط).
- * 2. يحتوي على زر علوي وسفلي واضح ("فتح المعرض العادي للهاتف 📂") لمن يريد التحويل للمعرض العام بدون أي تعارض.
+ * معرض استديو الخزنة المباشر (Vault Gallery Picker & Smart Studio Bridge):
+ * يُفتح إما تلقائياً عند طلب ملف، أو فوراً عبر الزر العائم «استديو الخزنة 🔒» فوق الاستديو العام
+ * داخل تطبيقات الجوال الثاني (مثل منصة X / تويتر، إنستغرام، واتساب، تيليجرام، سناب شات).
  */
 class VaultMediaPickerActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_DIRECT_SHARE_PACKAGE = "extra_direct_share_package"
+    }
 
     private lateinit var repository: VaultRepository
     private lateinit var securityPrefs: SecurityPreferences
     private lateinit var rvPicker: RecyclerView
     private lateinit var emptyView: TextView
-    private lateinit var btnConfirmMulti: Button
+    private lateinit var bottomActionContainer: LinearLayout
+    private lateinit var btnPrimaryAction: Button
+    private lateinit var btnSecondaryAction: Button
     private lateinit var pickerAdapter: PickerAdapter
 
     private var allowMultiple = false
     private var requestedMime = "*/*"
+    private var directSharePackage: String? = null
     private var currentCategory = VaultCategory.ALL
     private val selectedItems = mutableSetOf<VaultItem>()
 
-    // Fallback launcher for the regular system gallery when the user explicitly clicks "المعرض العادي"
+    // Fallback launcher for the regular system gallery when the user clicks "المعرض العادي"
     private val normalGalleryLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -99,7 +110,8 @@ class VaultMediaPickerActivity : AppCompatActivity() {
             securityPrefs.unlockWithBiometric()
         }
 
-        allowMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+        directSharePackage = intent.getStringExtra(EXTRA_DIRECT_SHARE_PACKAGE)
+        allowMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false) || (directSharePackage != null)
         requestedMime = intent.type ?: "*/*"
         currentCategory = when {
             requestedMime.startsWith("image/") -> VaultCategory.PHOTOS
@@ -110,6 +122,14 @@ class VaultMediaPickerActivity : AppCompatActivity() {
 
         buildUI()
         loadVaultMedia()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Re-ensure the floating button stays active for the target app when closing the picker
+        directSharePackage?.let { pkg ->
+            AppLockManager.notifyAppLaunchedFromVault(applicationContext, pkg)
+        }
     }
 
     private fun buildUI() {
@@ -148,18 +168,23 @@ class VaultMediaPickerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = dp(10)
+                marginEnd = dp(8)
             }
         }
 
         val tvTitle = TextView(this).apply {
-            text = "معرض الخزنة السري 🔒"
+            text = "استديو الخزنة المباشر 🔒"
             setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.text_primary))
-            textSize = 16f
+            textSize = 15f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
 
         val tvSub = TextView(this).apply {
-            text = if (allowMultiple) "اختر صورة أو عدة ملفات لإرسالها مباشرة" else "اختر ملفاً لإرساله مباشرة بدون إظهاره بالاستوديو"
+            text = if (directSharePackage != null) {
+                "حدد صوراً أو فيديو لإدراجها فوراً بأول الاستديو العام أو إرسالها مباشرة"
+            } else {
+                "اختر ملفاً لإرساله مباشرة أو اضغط (الاستديو العام 📂)"
+            }
             setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_accent_cyan))
             textSize = 11f
         }
@@ -167,16 +192,21 @@ class VaultMediaPickerActivity : AppCompatActivity() {
         titleCol.addView(tvTitle)
         titleCol.addView(tvSub)
 
-        // Button to switch to Normal Phone Gallery without conflict
+        // Button to switch to / return to the General Phone Studio seamlessly
         val btnNormalGallery = Button(this).apply {
-            text = "المعرض العادي 📂"
-            textSize = 12f
+            text = if (directSharePackage != null) "العودة للاستديو العام 📂" else "الاستديو العام 📂"
+            textSize = 11f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_bg_dark))
             setBackgroundColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_accent_gold))
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
             setOnClickListener {
-                openNormalSystemGallery()
+                if (directSharePackage != null) {
+                    // The General Studio of X / Instagram is already open right underneath!
+                    finish()
+                } else {
+                    openNormalSystemGallery()
+                }
             }
         }
 
@@ -244,7 +274,7 @@ class VaultMediaPickerActivity : AppCompatActivity() {
         rvPicker.adapter = pickerAdapter
 
         emptyView = TextView(this).apply {
-            text = "لا توجد ملفات مشفرة في هذا القسم داخل الخزنة.\nيمكنك الضغط على «المعرض العادي 📂» بالأعلى للاختيار من هاتفك."
+            text = "لا توجد ملفات مشفرة في هذا القسم داخل الخزنة.\nيمكنك إضافة صور أو فيديوهات للخزنة أو الضغط على «الاستديو العام 📂» بالأعلى."
             gravity = Gravity.CENTER
             setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.text_secondary))
             textSize = 14f
@@ -261,27 +291,66 @@ class VaultMediaPickerActivity : AppCompatActivity() {
         contentFrame.addView(emptyView)
         root.addView(contentFrame)
 
-        // 4. Bottom Action Bar (Confirm multi-select or Switch to Normal Gallery)
-        btnConfirmMulti = Button(this).apply {
-            text = "إرسال الملفات المحددة ✓"
-            textSize = 15f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_bg_dark))
-            setBackgroundColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_accent_cyan))
+        // 4. Bottom Action Container (Supports both Instant General Studio Bridge & Direct App Share)
+        bottomActionContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_surface_dark))
+            setPadding(dp(12), dp(8), dp(12), dp(12))
             visibility = View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(52)
-            ).apply {
-                setMargins(dp(12), dp(6), dp(12), dp(10))
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        btnPrimaryAction = Button(this).apply {
+            text = if (directSharePackage != null) {
+                "⚡ إدراج فوري بأول الاستديو العام لاختيارها الآن"
+            } else {
+                "إرسال الملفات المحددة ✓"
             }
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_bg_dark))
+            setBackgroundColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_accent_cyan))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48)
+            )
             setOnClickListener {
                 if (selectedItems.isNotEmpty()) {
-                    deliverSelectedVaultItems(selectedItems.toList())
+                    if (directSharePackage != null) {
+                        bridgeSelectedItemsToGeneralStudio(selectedItems.toList())
+                    } else {
+                        deliverSelectedVaultItems(selectedItems.toList())
+                    }
                 }
             }
         }
-        root.addView(btnConfirmMulti)
+
+        btnSecondaryAction = Button(this).apply {
+            text = "🚀 إرسال مباشر كمنشور/رسالة جديدة في التطبيق"
+            textSize = 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_bg_dark))
+            setBackgroundColor(ContextCompat.getColor(this@VaultMediaPickerActivity, R.color.vault_accent_gold))
+            visibility = if (directSharePackage != null) View.VISIBLE else View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44)
+            ).apply {
+                topMargin = dp(6)
+            }
+            setOnClickListener {
+                if (selectedItems.isNotEmpty()) {
+                    shareDirectlyToTargetApp(selectedItems.toList())
+                }
+            }
+        }
+
+        bottomActionContainer.addView(btnPrimaryAction)
+        bottomActionContainer.addView(btnSecondaryAction)
+        root.addView(bottomActionContainer)
 
         setContentView(root)
     }
@@ -296,10 +365,6 @@ class VaultMediaPickerActivity : AppCompatActivity() {
         rvPicker.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    /**
-     * Opens the standard system document/media picker while strictly excluding our own package
-     * so there is zero recursion or conflict!
-     */
     private fun openNormalSystemGallery() {
         try {
             val docIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -309,7 +374,218 @@ class VaultMediaPickerActivity : AppCompatActivity() {
             }
             normalGalleryLauncher.launch(docIntent)
         } catch (e: Exception) {
-            Toast.makeText(this, "تعذر فتح المعرض العادي: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "تعذر فتح الاستديو العام: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Bridges selected Vault items directly into the top (#1 spot) of the General Studio (MediaStore DCIM/Camera)
+     * so when this picker closes (100ms later), the user sees the photo right at the top of X/Instagram's open General Studio,
+     * and AppLockService automatically deletes it from the General Studio after 2 minutes or when leaving the app!
+     */
+    private fun bridgeSelectedItemsToGeneralStudio(items: List<VaultItem>) {
+        if (items.isEmpty()) return
+        Toast.makeText(this, "جاري إدراج الملف في أول الاستديو العام...", Toast.LENGTH_SHORT).show()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            var bridgedCount = 0
+            val scannedPaths = mutableListOf<String>()
+
+            for (item in items) {
+                val bytes = repository.getDecryptedBytes(item) ?: continue
+                val ext = item.originalName.substringAfterLast('.', if (item.category == VaultCategory.VIDEOS) "mp4" else "jpg")
+                val fileName = "IMG_${System.currentTimeMillis()}_${bridgedCount}.$ext"
+                val mime = item.mimeType.ifBlank {
+                    if (item.category == VaultCategory.VIDEOS) "video/mp4" else "image/jpeg"
+                }
+
+                val isVideo = item.category == VaultCategory.VIDEOS || mime.startsWith("video/")
+                val collection = if (isVideo) {
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
+
+                val nowMillis = System.currentTimeMillis()
+                val nowSeconds = nowMillis / 1000L
+
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val values = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                            put(MediaStore.MediaColumns.DATE_ADDED, nowSeconds)
+                            put(MediaStore.MediaColumns.DATE_MODIFIED, nowSeconds)
+                            put(MediaStore.MediaColumns.DATE_TAKEN, nowMillis)
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DCIM + "/Camera")
+                            put(MediaStore.MediaColumns.IS_PENDING, 1)
+                        }
+                        val insertedUri = contentResolver.insert(collection, values)
+                        if (insertedUri != null) {
+                            contentResolver.openOutputStream(insertedUri)?.use { out ->
+                                out.write(bytes)
+                                out.flush()
+                            }
+                            val publishValues = ContentValues().apply {
+                                put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                put(MediaStore.MediaColumns.DATE_ADDED, nowSeconds)
+                                put(MediaStore.MediaColumns.DATE_MODIFIED, nowSeconds)
+                            }
+                            contentResolver.update(insertedUri, publishValues, null, null)
+                            AppLockService.registerTemporaryBridgedMedia(
+                                applicationContext,
+                                insertedUri,
+                                null,
+                                120_000L
+                            )
+                            bridgedCount++
+                        }
+                    } else {
+                        @Suppress("DEPRECATION")
+                        val dcimDir = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+                            "Camera"
+                        ).apply { mkdirs() }
+                        val targetFile = File(dcimDir, fileName)
+                        FileOutputStream(targetFile).use { out ->
+                            out.write(bytes)
+                            out.flush()
+                        }
+                        @Suppress("DEPRECATION")
+                        val values = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DATA, targetFile.absolutePath)
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                            put(MediaStore.MediaColumns.DATE_ADDED, nowSeconds)
+                            put(MediaStore.MediaColumns.DATE_MODIFIED, nowSeconds)
+                        }
+                        val insertedUri = contentResolver.insert(collection, values)
+                        if (insertedUri != null) {
+                            AppLockService.registerTemporaryBridgedMedia(
+                                applicationContext,
+                                insertedUri,
+                                targetFile,
+                                120_000L
+                            )
+                        }
+                        scannedPaths.add(targetFile.absolutePath)
+                        bridgedCount++
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (scannedPaths.isNotEmpty()) {
+                MediaScannerConnection.scanFile(
+                    applicationContext,
+                    scannedPaths.toTypedArray(),
+                    null,
+                    null
+                )
+            }
+
+            try {
+                contentResolver.notifyChange(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null)
+                contentResolver.notifyChange(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null)
+            } catch (_: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                if (bridgedCount > 0) {
+                    Toast.makeText(
+                        this@VaultMediaPickerActivity,
+                        "✅ تم وضع الملف في أول الاستديو العام! اختره الآن (سيتم إخفاؤه تلقائياً بعد الإرسال 🔒)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    finish()
+                } else {
+                    // Fallback to direct share if MediaStore insert failed
+                    shareDirectlyToTargetApp(items)
+                }
+            }
+        }
+    }
+
+    /**
+     * Sends the decrypted Vault items directly to the target app (e.g., X, Instagram, WhatsApp)
+     * via ACTION_SEND / ACTION_SEND_MULTIPLE.
+     */
+    private fun shareDirectlyToTargetApp(items: List<VaultItem>) {
+        if (items.isEmpty()) return
+        val targetPkg = directSharePackage
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val shareDir = File(cacheDir, "secure_share").apply { mkdirs() }
+            val resultUris = ArrayList<Uri>()
+            var primaryMime = "image/*"
+
+            for (item in items) {
+                val bytes = repository.getDecryptedBytes(item) ?: continue
+                if (item.mimeType.isNotBlank()) primaryMime = item.mimeType
+                val safeName = item.originalName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                val tempFile = File(shareDir, "share_${item.id}_$safeName")
+                FileOutputStream(tempFile).use { it.write(bytes) }
+
+                val uri = FileProvider.getUriForFile(
+                    applicationContext,
+                    "$packageName.provider",
+                    tempFile
+                )
+                resultUris.add(uri)
+            }
+
+            withContext(Dispatchers.Main) {
+                if (resultUris.isEmpty()) {
+                    Toast.makeText(this@VaultMediaPickerActivity, "تعذر فك تشفير الملف المختار", Toast.LENGTH_SHORT).show()
+                    return@withContext
+                }
+
+                try {
+                    val shareIntent = if (resultUris.size == 1) {
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = primaryMime
+                            putExtra(Intent.EXTRA_STREAM, resultUris.first())
+                            clipData = ClipData.newUri(contentResolver, "vault_media", resultUris.first())
+                        }
+                    } else {
+                        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                            type = "*/*"
+                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, resultUris)
+                        }
+                    }
+
+                    shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (!targetPkg.isNullOrEmpty()) {
+                        shareIntent.setPackage(targetPkg)
+                        for (u in resultUris) {
+                            try {
+                                grantUriPermission(targetPkg, u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    startActivity(shareIntent)
+                    finish()
+                } catch (_: Exception) {
+                    // If targetPkg doesn't handle direct ACTION_SEND, open chooser
+                    try {
+                        val chooser = Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = primaryMime
+                                putExtra(Intent.EXTRA_STREAM, resultUris.first())
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            },
+                            "إرسال الملف المشفر عبر"
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(chooser)
+                        finish()
+                    } catch (e2: Exception) {
+                        Toast.makeText(this@VaultMediaPickerActivity, "تعذر الإرسال المباشر: ${e2.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
@@ -356,7 +632,6 @@ class VaultMediaPickerActivity : AppCompatActivity() {
                     }
                 }
 
-                // Grant read URI permission to calling package if known
                 callingPackage?.let { caller ->
                     for (u in resultUris) {
                         try {
@@ -451,7 +726,7 @@ class VaultMediaPickerActivity : AppCompatActivity() {
         }
 
         private fun handleItemClick(item: VaultItem) {
-            if (!allowMultiple) {
+            if (!allowMultiple && directSharePackage == null) {
                 deliverSelectedVaultItems(listOf(item))
             } else {
                 if (selectedItems.contains(item)) {
@@ -461,10 +736,15 @@ class VaultMediaPickerActivity : AppCompatActivity() {
                 }
                 notifyDataSetChanged()
                 if (selectedItems.isNotEmpty()) {
-                    btnConfirmMulti.visibility = View.VISIBLE
-                    btnConfirmMulti.text = "إرسال (${selectedItems.size}) ملفات محددة ✓"
+                    bottomActionContainer.visibility = View.VISIBLE
+                    if (directSharePackage != null) {
+                        btnPrimaryAction.text = "⚡ إدراج (${selectedItems.size}) في أول الاستديو العام الآن"
+                        btnSecondaryAction.text = "🚀 إرسال (${selectedItems.size}) مباشرة إلى التطبيق"
+                    } else {
+                        btnPrimaryAction.text = "إرسال (${selectedItems.size}) ملفات محددة ✓"
+                    }
                 } else {
-                    btnConfirmMulti.visibility = View.GONE
+                    bottomActionContainer.visibility = View.GONE
                 }
             }
         }

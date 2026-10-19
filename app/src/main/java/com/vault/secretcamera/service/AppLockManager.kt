@@ -82,6 +82,22 @@ object AppLockManager {
         }
     }
 
+    fun notifyAppLaunchedFromVault(context: Context, targetPackage: String) {
+        try {
+            val intent = Intent(context, AppLockService::class.java).apply {
+                action = AppLockService.ACTION_ACTIVATE_VAULT_APP
+                putExtra(AppLockService.EXTRA_TARGET_PKG, targetPackage)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(context, intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun stopLockService(context: Context) {
         try {
             val intent = Intent(context, AppLockService::class.java)

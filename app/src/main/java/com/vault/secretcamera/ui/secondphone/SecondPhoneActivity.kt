@@ -79,6 +79,7 @@ class SecondPhoneActivity : AppCompatActivity() {
             return
         }
         isLaunchingChild = false
+        com.vault.secretcamera.service.AppLockService.cleanupAllBridgedMedia(this)
         loadApps()
         updateShieldUI()
         AdManager.loadBanner(this, binding.adBannerSecondPhoneContainer)
@@ -126,21 +127,21 @@ class SecondPhoneActivity : AppCompatActivity() {
 
         if (!hasUsage || !hasOverlay) {
             AlertDialog.Builder(this)
-                .setTitle("صلاحيات درع الحماية 🔒")
-                .setMessage("لتأمين وقفل التطبيقات من خارج الخزنة بنجاح، يحتاج التطبيق إلى صلاحيتي (الوصول لبيانات الاستخدام) و(الظهور فوق التطبيقات).\nهل تريد تفعيلها الآن؟")
+                .setTitle("صلاحيات درع الحماية واستديو الخزنة 🔒")
+                .setMessage("لتأمين التطبيقات من خارج الخزنة وإظهار زر (استديو الخزنة 🔒) فوق الاستديو العام داخل التطبيقات، يحتاج التطبيق إلى صلاحيتي (الوصول لبيانات الاستخدام) و(الظهور فوق التطبيقات).\nهل تريد تفعيلها الآن؟")
                 .setPositiveButton("تفعيل الصلاحيات") { _, _ ->
                     isLaunchingChild = true
-                    if (!hasUsage) {
-                        AppLockManager.requestUsageStatsPermission(this)
-                    } else if (!hasOverlay) {
+                    if (!hasOverlay) {
                         AppLockManager.requestOverlayPermission(this)
+                    } else if (!hasUsage) {
+                        AppLockManager.requestUsageStatsPermission(this)
                     }
                 }
                 .setNegativeButton("لاحقاً", null)
                 .show()
         } else {
             AppLockManager.startLockService(this)
-            Toast.makeText(this, "تم تفعيل درع الحماية بنجاح!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "تم تفعيل درع الحماية وزر استديو الخزنة بنجاح!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -177,15 +178,35 @@ class SecondPhoneActivity : AppCompatActivity() {
                 null -> {}
             }
         } else {
-            // Grant session access token so AppLock allows the app to run smoothly when launched from inside the Vault
-            AppVaultRepository.grantTemporaryAccess(item.packageName, 10 * 60_000L)
-            val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
-            if (launchIntent != null) {
-                isLaunchingChild = true
-                startActivity(launchIntent)
-            } else {
-                Toast.makeText(this, "تعذر تشغيل التطبيق (قد يكون تم إلغاء تثبيته)", Toast.LENGTH_SHORT).show()
+            if (!AppLockManager.hasOverlayPermission(this)) {
+                AlertDialog.Builder(this)
+                    .setTitle("تفعيل زر استديو الخزنة المباشر 🔒")
+                    .setMessage("لتتمكن من الدخول مباشرة إلى (استديو الخزنة 🔒) عندما يفتح لك الاستديو العام داخل تطبيق «${item.appName}»، يرجى تفعيل صلاحية (الظهور فوق التطبيقات) مرة واحدة فقط.")
+                    .setPositiveButton("تفعيل الصلاحية الآن") { _, _ ->
+                        isLaunchingChild = true
+                        AppLockManager.requestOverlayPermission(this)
+                    }
+                    .setNegativeButton("فتح التطبيق مباشرة") { _, _ ->
+                        launchProtectedAppNow(item)
+                    }
+                    .show()
+                return
             }
+            launchProtectedAppNow(item)
+        }
+    }
+
+    private fun launchProtectedAppNow(item: AppVaultItem) {
+        // Grant session access token and immediately activate the floating "استديو الخزنة 🔒" button
+        AppVaultRepository.grantTemporaryAccess(item.packageName, 15 * 60_000L)
+        AppLockManager.notifyAppLaunchedFromVault(this, item.packageName)
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(item.packageName)
+        if (launchIntent != null) {
+            isLaunchingChild = true
+            startActivity(launchIntent)
+        } else {
+            Toast.makeText(this, "تعذر تشغيل التطبيق (قد يكون تم إلغاء تثبيته)", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -70,8 +70,11 @@ class AppPickerActivity : AppCompatActivity() {
         loadInstalledApps()
     }
 
+    private var isLaunchingPermission = false
+
     override fun onResume() {
         super.onResume()
+        isLaunchingPermission = false
         val app = application as SecretVaultApp
         if (!app.securityPreferences.isUnlocked()) {
             finish()
@@ -81,7 +84,7 @@ class AppPickerActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         val app = application as SecretVaultApp
-        if (!isFinishing && !isChangingConfigurations && !AdManager.isAdShowing) {
+        if (!isFinishing && !isLaunchingPermission && !isChangingConfigurations && !AdManager.isAdShowing) {
             app.securityPreferences.lockVault()
             finish()
         }
@@ -186,22 +189,26 @@ class AppPickerActivity : AppCompatActivity() {
             app.isAdded = true
             adapter.notifyItemChanged(filteredApps.indexOf(app))
 
-            if (com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)) {
+            val hasUsage = com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)
+            val hasOverlay = com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)
+
+            if (hasUsage && hasOverlay) {
                 com.vault.secretcamera.service.AppLockManager.startLockService(this)
                 Toast.makeText(
                     this,
-                    "تم نقل ${app.appName} للخزنة وحظره من الشاشة الرئيسية برسالة خطأ تمويهية! 🔒",
+                    "تم نقل ${app.appName} للخزنة وتفعيل زر استديو الخزنة وحظر الفتح الخارجي! 🔒",
                     Toast.LENGTH_LONG
                 ).show()
             } else {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("تفعيل الحظر الصارم من الشاشة الرئيسية 🔒")
-                    .setMessage("تم نقل «${app.appName}» داخل الخزنة.\nلمنعه نهائياً من الفتح في الشاشة الرئيسية وإظهار رسالة خطأ تمويهية عند النقر عليه من الخارج، يرجى منح إذن (الوصول لبيانات الاستخدام و الظهور فوق التطبيقات).")
+                    .setTitle("تفعيل الحظر الصارم وزر استديو الخزنة 🔒")
+                    .setMessage("تم نقل «${app.appName}» داخل الخزنة.\nلمنعه من الفتح في الشاشة الرئيسية وإظهار زر (استديو الخزنة 🔒) فوق الاستديو العام داخل التطبيق، يرجى منح إذن (الظهور فوق التطبيقات) و(بيانات الاستخدام).")
                     .setPositiveButton("تفعيل الآن") { _, _ ->
-                        if (!com.vault.secretcamera.service.AppLockManager.hasUsageStatsPermission(this)) {
-                            com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
-                        } else if (!com.vault.secretcamera.service.AppLockManager.hasOverlayPermission(this)) {
+                        isLaunchingPermission = true
+                        if (!hasOverlay) {
                             com.vault.secretcamera.service.AppLockManager.requestOverlayPermission(this)
+                        } else if (!hasUsage) {
+                            com.vault.secretcamera.service.AppLockManager.requestUsageStatsPermission(this)
                         }
                     }
                     .setNegativeButton("لاحقاً", null)
