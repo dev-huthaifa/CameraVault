@@ -6,3 +6,8 @@ cd /d S:\SecretVault
 
 "%JAVA_HOME%\bin\java.exe" -Duser.home=C:\Users\E439~1 -Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew -classpath "C:\Users\E439~1\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\gradle-launcher-8.9.jar" org.gradle.launcher.GradleMain --stop
 "%JAVA_HOME%\bin\java.exe" -Duser.home=C:\Users\E439~1 -Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew -classpath "C:\Users\E439~1\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\lib\gradle-launcher-8.9.jar" org.gradle.launcher.GradleMain assembleRelease
+
+if exist "S:\SecretVault\app\build\outputs\apk\release\app-release.apk" (
+    copy /Y "S:\SecretVault\app\build\outputs\apk\release\app-release.apk" "S:\SecretVault\CameraVault_v1.0_Signed.apk"
+    copy /Y "S:\SecretVault\app\build\outputs\apk\release\app-release.apk" "S:\SecretVault\FINAL_RELEASE_APK\CameraVault_v1.0_Signed.apk"
+)
